@@ -1,4 +1,5 @@
 import os
+import gc
 import torch
 import patchcore
 import cv2 as cv
@@ -20,7 +21,7 @@ from sklearn.decomposition import PCA, FactorAnalysis
 from sklearn.decomposition import TruncatedSVD
 resize = 640
 # data_root = '/home/flyinghu/Data/mvtec_anomaly_detection'
-data_root = '/home/wwkkb/RegAD-main/MVTec'
+data_root = '/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVTec'
 backbone_name = 'wideresnet50'
 layer = 'layer2'
 device = 'cuda'
@@ -37,7 +38,7 @@ n_clusters = 4
 
 object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood']
 CLASS_NAMES = [
-    'bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
+     'bottle','cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
     'toothbrush', 'transistor', 'wood', 'zipper'
 ]
 
@@ -49,7 +50,7 @@ class MVTecDataset(torch.utils.data.Dataset):
         self.root = root
         self.classname = classname
         self.resize = resize
-        self.classpath = os.path.join(root, classname, 'train', 'good') if split == 'train' else os.path.join(root,
+        self.classpath = os.path.join(root, classname, 'train', 'good3') if split == 'train' else os.path.join(root,
                                                                                                               classname,
                                                                                                               'test',
                                                                                                               anomaly)
@@ -205,13 +206,13 @@ for classname in CLASS_NAMES:
 
     def test_LabelPropagation(*data):
         X, y, unlabeled_data = data
-        unlabeled_data=unlabeled_data[0:1000]
+        unlabeled_data=unlabeled_data[0:7800]
         unlabeled_data=unlabeled_data.copy()
         train_unlabel=-np.ones(len(unlabeled_data))
         train_all=np.vstack((X,unlabeled_data))
         label_all=np.hstack((y,train_unlabel))
 
-        clf = LabelPropagation(max_iter=1000, kernel='rbf', gamma=5)
+        clf = LabelPropagation(max_iter=500, kernel='rbf', gamma=5)
         clf.fit(train_all, label_all)
         return train_all,clf.predict(train_all)
 
@@ -223,7 +224,7 @@ for classname in CLASS_NAMES:
 
 
     lda.fit(train,label)
-    cur_output_dir = os.path.join(cur_classname_output_dir, 'train', 'good')
+    cur_output_dir = os.path.join(cur_classname_output_dir, 'train', 'good3')
     os.makedirs(cur_output_dir, exist_ok=True)
     for i in tqdm(range(len(train_dataset)), desc='train result', leave=False):
         image_path = train_dataset.img_fns[i]
@@ -264,8 +265,7 @@ for classname in CLASS_NAMES:
         # cv.imshow('graycsale image', lda_mask)
         cv.imwrite(os.path.join(cur_output_dir, 'mask'+image_name),lda_mask)
 
-        # waitKey() waits for a key press to close the window and 0 specifies indefinite loop
-        cv.waitKey(0)
+
 
 
         cn, cc_labels, cc_stats, _ = cv.connectedComponentsWithStats(lda_mask, connectivity=8)
@@ -306,14 +306,6 @@ for classname in CLASS_NAMES:
             features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
 
 
-            # def PCA_w(features, pca):
-            #     b, c, h, w = features.shape
-            #     features = (features.reshape(-1, features.shape[1])).cpu().numpy()
-            #     features = torch.tensor(pca.transform(features))
-            #     features = features.cuda()
-            #     return features, b, h, w
-            # features, b, h, w = PCA_w(features, pca)
-            # features = features.reshape(b, n_component_pca, h, w)
 
 
             features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
@@ -330,6 +322,7 @@ for classname in CLASS_NAMES:
                     np.uint8) * 255
             else:
                 lda_mask = (lda_predict > lda_threshold).astype(np.uint8) * 255
+            cv.imwrite(os.path.join(cur_output_dir, 'mask' + image_name), lda_mask)
             cn, cc_labels, cc_stats, _ = cv.connectedComponentsWithStats(lda_mask, connectivity=8)
             mask = np.zeros_like(lda_predict, dtype=np.uint8)
             if cn > 1:
@@ -348,3 +341,5 @@ for classname in CLASS_NAMES:
             plt.savefig(os.path.join(cur_output_dir, image_name))
             plt.close()
             # cv.imwrite(os.path.join(cur_output_dir, image_name), mask)
+            gc.collect()
+            torch.cuda.empty_cache()
