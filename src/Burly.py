@@ -15,6 +15,7 @@ from sklearn.cluster import KMeans
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from patchcore.datasets.mvtec import _CLASSNAMES, IMAGENET_MEAN, IMAGENET_STD
 from sklearn.semi_supervised import LabelPropagation
+from patchcore import sampler
 import random
 from sklearn import decomposition
 from sklearn.decomposition import PCA, FactorAnalysis
@@ -205,8 +206,28 @@ for classname in CLASS_NAMES:
 
 
     def test_LabelPropagation(*data):
-        X, y, unlabeled_data = data
-        unlabeled_data=unlabeled_data[0:7800]
+        X, y, unlabeled_data_all = data
+
+
+
+
+        sampling_percentage = 0.1
+        feature_dimension=512
+        model = sampler.GreedyCoresetSampler(
+            percentage=sampling_percentage,
+            device=torch.device("cpu"),
+            dimension_to_project_features_to=feature_dimension,
+        )
+        unlabeled_datas=None
+        for sa in range(10):
+            unlabeled_data=torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all)/50)*sa:int(len(unlabeled_data_all)/50)*(sa+1)])
+            unlabeled_data = model.run(unlabeled_data)
+            if unlabeled_datas==None:
+                unlabeled_datas=unlabeled_data
+            else:
+                unlabeled_datas=torch.cat((unlabeled_datas,unlabeled_data),dim=0)
+        unlabeled_data=model.run(unlabeled_datas)
+        unlabeled_data=unlabeled_data.numpy()
         unlabeled_data=unlabeled_data.copy()
         train_unlabel=-np.ones(len(unlabeled_data))
         train_all=np.vstack((X,unlabeled_data))
@@ -341,5 +362,10 @@ for classname in CLASS_NAMES:
             plt.savefig(os.path.join(cur_output_dir, image_name))
             plt.close()
             # cv.imwrite(os.path.join(cur_output_dir, image_name), mask)
+
+
+
+
             gc.collect()
             torch.cuda.empty_cache()
+

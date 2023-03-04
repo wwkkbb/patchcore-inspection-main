@@ -1,11 +1,13 @@
+import os
+
 import numpy as np
 import torch.utils.data
 from torchvision import models
 
 import patchcore
 from patchcore import patchcore as patchcore_model
-
-
+import matplotlib.pylab as plt
+import matplotlib.cm as cm
 def _dummy_features(number_of_examples, shape_of_examples):
     return torch.Tensor(
         np.stack(number_of_examples * [np.ones(shape_of_examples)], axis=0)
@@ -14,7 +16,7 @@ def _dummy_features(number_of_examples, shape_of_examples):
 
 def _dummy_constant_dataloader(number_of_examples, shape_of_examples):
     features = _dummy_features(number_of_examples, shape_of_examples)
-    return torch.utils.data.DataLoader(features, batch_size=1)
+    return torch.utils.data.DataLoader(features, batch_size=4)
 
 
 def _dummy_various_features(number_of_examples, shape_of_examples):
@@ -70,7 +72,7 @@ def _load_patchcore_from_path(load_path):
 
 
 def _approximate_greedycoreset_sampler_with_reduction(
-    sampling_percentage, johnsonlindenstrauss_dim
+        sampling_percentage, johnsonlindenstrauss_dim
 ):
     return patchcore.sampler.ApproximateGreedyCoresetSampler(
         percentage=sampling_percentage,
@@ -80,11 +82,46 @@ def _approximate_greedycoreset_sampler_with_reduction(
     )
 
 
+def test_dummy_patchcore1():
+    import cv2
+    image_dimension = 112
+    model = _standard_patchcore(image_dimension)
+    class_='screw'
+    path = os.path.join('/home/wwkkb/MVTec',class_,'train/good')
+    dir = os.listdir(path)
+    images = np.stack(cv2.resize(cv2.imread(os.path.join(path, img)), (112, 112)) for img in dir)
+    images=torch.from_numpy(images)
+    images = images.permute(0, 3, 1, 2)
+    training_dataloader = torch.utils.data.DataLoader(images, batch_size=4)
+    print(model.featuresampler)
+    model.fit(training_dataloader)
+    bloken='scratch_head'
+    path_test = os.path.join('/home/wwkkb/MVTec',class_,'test',bloken)
+    test_features =np.stack(cv2.resize(cv2.imread(os.path.join(path_test, img)), (112, 112)) for img in dir[:20])
+
+    test_features=torch.from_numpy(test_features)
+    test_features=test_features.permute(0,3,1,2)
+    scores, masks = model.predict(test_features)
+    for i in range(len(masks)):
+        plt.imshow(masks[i], cmap=cm.hot)
+        os.makedirs(os.path.join('/home/wwkkb/MVTec',class_,'test/hot'),exist_ok=True)
+        plt.savefig(os.path.join('/home/wwkkb/MVTec',class_,'test/hot',str(i)+'png'))
+        plt.colorbar()
+        plt.show()
+    # mask0=np.uint8(masks[0])
+    # cv2.imshow("x",mask0)
+    # cv2.waitKey(0)
+    assert all([score > 0 for score in scores])
+    for mask in masks:
+        assert np.all(mask.shape == (image_dimension, image_dimension))
+
+
+
 def test_dummy_patchcore():
     image_dimension = 112
     model = _standard_patchcore(image_dimension)
     training_dataloader = _dummy_constant_dataloader(
-        4, [3, image_dimension, image_dimension]
+        20, [3, image_dimension, image_dimension]
     )
     print(model.featuresampler)
     model.fit(training_dataloader)
