@@ -200,24 +200,24 @@ class PatchCore(torch.nn.Module):
                     masks.append(mask)
         return scores, masks, labels_gt, masks_gt
 
-    def _predict(self, images):
+    def _predict(self, images):#batch*3*112*112
         """Infer score and mask for a batch of images."""
         images = images.to(torch.float).to(self.device)
         _ = self.forward_modules.eval()
 
         batchsize = images.shape[0]
         with torch.no_grad():
-            features, patch_shapes = self._embed(images, provide_patch_shapes=True)
+            features, patch_shapes = self._embed(images, provide_patch_shapes=True)#3920*1024 [[14,14],[7,7]]
             features = np.asarray(features)
 
-            patch_scores = image_scores = self.anomaly_scorer.predict([features])[0]
+            patch_scores = image_scores = self.anomaly_scorer.predict([features])[0]#3920 n
             image_scores = self.patch_maker.unpatch_scores(
                 image_scores, batchsize=batchsize
-            )
+            )#20*196=3920
             image_scores = image_scores.reshape(*image_scores.shape[:2], -1)
             image_scores = self.patch_maker.score(image_scores)
 
-            patch_scores = self.patch_maker.unpatch_scores(
+            patch_scores = self.patch_maker.unpatch_scores(#20*196 n
                 patch_scores, batchsize=batchsize
             )
             scales = patch_shapes[0]

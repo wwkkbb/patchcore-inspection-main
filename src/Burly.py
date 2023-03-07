@@ -16,10 +16,16 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from patchcore.datasets.mvtec import _CLASSNAMES, IMAGENET_MEAN, IMAGENET_STD
 from sklearn.semi_supervised import LabelPropagation
 from patchcore import sampler
+import patchcore
+import patchcore
+from patchcore import patchcore_Burly as patchcore_model
+from torchvision import models
 import random
 from sklearn import decomposition
 from sklearn.decomposition import PCA, FactorAnalysis
 from sklearn.decomposition import TruncatedSVD
+import matplotlib.pylab as plt
+import matplotlib.cm as cm
 resize = 640
 # data_root = '/home/flyinghu/Data/mvtec_anomaly_detection'
 data_root = '/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVTec'
@@ -207,11 +213,7 @@ for classname in CLASS_NAMES:
 
     def test_LabelPropagation(*data):
         X, y, unlabeled_data_all = data
-
-
-
-
-        sampling_percentage = 0.1
+        sampling_percentage = 0.05
         feature_dimension=512
         model = sampler.GreedyCoresetSampler(
             percentage=sampling_percentage,
@@ -219,8 +221,9 @@ for classname in CLASS_NAMES:
             dimension_to_project_features_to=feature_dimension,
         )
         unlabeled_datas=None
-        for sa in range(10):
-            unlabeled_data=torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all)/50)*sa:int(len(unlabeled_data_all)/50)*(sa+1)])
+        num=20
+        for sa in range(num):
+            unlabeled_data=torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all)/num)*sa:int(len(unlabeled_data_all)/num)*(sa+1)])
             unlabeled_data = model.run(unlabeled_data)
             if unlabeled_datas==None:
                 unlabeled_datas=unlabeled_data
@@ -242,73 +245,37 @@ for classname in CLASS_NAMES:
     labeled_data = np.vstack((background_features, foreground_features))
     labeled_label = np.hstack((background_label, foreground_label))
     train,label=test_LabelPropagation(labeled_data,labeled_label,image_features.reshape(-1, features.shape[1]))
+    trains=np.zeros_like(train)
+    sum=0
+    for i in range(len(label)):
+        if label[i]>0:
+            trains[sum]=train[i]
+            sum+=1
+    trains=trains[:sum]
 
+    image_dimension = 112
 
-    lda.fit(train,label)
-    cur_output_dir = os.path.join(cur_classname_output_dir, 'train', 'good3')
-    os.makedirs(cur_output_dir, exist_ok=True)
-    for i in tqdm(range(len(train_dataset)), desc='train result', leave=False):
-        image_path = train_dataset.img_fns[i]
-        image_name = os.path.basename(image_path)
-        image = Image.open(image_path).convert("RGB")
-        image = train_dataset.transform_img(image)
-        forward_hook.features = []
-        try:
-            backbone(image[None].to(device))
-        except patchcore.common.LastLayerToExtractReachedException:
-            pass
-        features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
+    print(257)
+    def _standard_patchcore(image_dimension):
+        patchcore_instance = patchcore_model.PatchCore(torch.device("cpu"))
+        backbone = models.wide_resnet50_2(pretrained=False)
+        backbone.name, backbone.seed = "wideresnet50", 0
+        patchcore_instance.load(
+            backbone=backbone,
+            layers_to_extract_from=["layer2", "layer3"],
+            device=torch.device("cpu"),
+            input_shape=[3, image_dimension, image_dimension],
+            pretrain_embed_dimension=1024,
+            target_embed_dimension=1024,
+            patchsize=3,
+            patchstride=1,
+            spade_nn=2,
+        )
+        return patchcore_instance
+    model = _standard_patchcore(image_dimension)
+    model.fit(trains)
 
-
-        # def PCA_w(features,pca):
-        #     b, c, h, w = features.shape
-        #     features = (features.reshape(-1, features.shape[1])).cpu().numpy()
-        #     features = torch.tensor(pca.transform(features))
-        #     features = features.cuda()
-        #     return features,b,h,w
-        # features,b,h,w=PCA_w(features,pca)
-        # features=features.reshape(b,n_component_pca,h,w)
-
-
-        features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
-        lda_predict = lda.transform(features)
-        lda_predict = lda_predict.reshape(forward_hook.features[0].shape[2], forward_hook.features[0].shape[3])
-        lda_predict = cv.resize(lda_predict, (image.shape[2], image.shape[1]))
-        lda_predict = ndimage.gaussian_filter(lda_predict, sigma=gaussian_filter_sigma)
-        # 将结果二值化然后求最大连通域的最小外接矩形。
-        if lda_threshold is None:
-            lda_mask = lda.predict(features).reshape(forward_hook.features[0].shape[2],
-                                                     forward_hook.features[0].shape[3])
-            lda_mask = cv.resize(lda_mask, (image.shape[2], image.shape[1]), interpolation=cv.INTER_NEAREST).astype(
-                np.uint8) * 255
-        else:
-            lda_mask = (lda_predict > lda_threshold).astype(np.uint8) * 255
-        # cv.imshow('graycsale image', lda_mask)
-        cv.imwrite(os.path.join(cur_output_dir, 'mask'+image_name),lda_mask)
-
-
-
-
-        cn, cc_labels, cc_stats, _ = cv.connectedComponentsWithStats(lda_mask, connectivity=8)
-        mask = np.zeros_like(lda_predict, dtype=np.uint8)
-        if cn > 1:
-            max_cc_labels = np.argmax(np.array([i[-1] for i in cc_stats[1:]])) + 1
-            y, x = np.where(cc_labels == max_cc_labels)
-            rect = cv.minAreaRect(np.stack([x, y], axis=1))
-            box = cv.boxPoints(rect)
-            mask = cv.fillPoly(mask, box[None].astype(int), 255)
-        plt.figure(figsize=(15, 15), dpi=180)
-        plt.subplot(1, 3, 1)
-        plt.imshow(image.permute(1, 2, 0) * torch.tensor(IMAGENET_STD) + torch.tensor(IMAGENET_MEAN))
-        plt.subplot(1, 3, 2)
-        plt.imshow(lda_predict, plt.cm.hot)
-        plt.subplot(1, 3, 3)
-        plt.imshow(mask, 'gray')
-        plt.savefig(os.path.join(cur_output_dir, image_name))
-        plt.close()
-        # cv.imwrite(os.path.join(cur_output_dir, image_name), mask)
-
-    # 测试数据集
+    #test
     for an in tqdm(os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test')), 'test result'):
         test_dataset = MVTecDataset(train_dataset.root, train_dataset.classname, train_dataset.resize, split='test',
                                     anomaly=an)
@@ -325,47 +292,141 @@ for classname in CLASS_NAMES:
             except patchcore.common.LastLayerToExtractReachedException:
                 pass
             features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
-
-
-
-
             features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
-            lda_predict = lda.transform(features)
-            lda_predict = lda_predict.reshape(forward_hook.features[0].shape[2], forward_hook.features[0].shape[3])
-            lda_predict = cv.resize(lda_predict, (image.shape[2], image.shape[1]))
-            lda_predict = ndimage.gaussian_filter(lda_predict, sigma=gaussian_filter_sigma)
 
-            # 将结果二值化然后求最大连通域的最小外接矩形。
-            if lda_threshold is None:
-                lda_mask = lda.predict(features).reshape(forward_hook.features[0].shape[2],
-                                                         forward_hook.features[0].shape[3])
-                lda_mask = cv.resize(lda_mask, (image.shape[2], image.shape[1]), interpolation=cv.INTER_NEAREST).astype(
-                    np.uint8) * 255
-            else:
-                lda_mask = (lda_predict > lda_threshold).astype(np.uint8) * 255
-            cv.imwrite(os.path.join(cur_output_dir, 'mask' + image_name), lda_mask)
-            cn, cc_labels, cc_stats, _ = cv.connectedComponentsWithStats(lda_mask, connectivity=8)
-            mask = np.zeros_like(lda_predict, dtype=np.uint8)
-            if cn > 1:
-                max_cc_labels = np.argmax(np.array([i[-1] for i in cc_stats[1:]])) + 1
-                y, x = np.where(cc_labels == max_cc_labels)
-                rect = cv.minAreaRect(np.stack([x, y], axis=1))
-                box = cv.boxPoints(rect)
-                mask = cv.fillPoly(mask, box[None].astype(int), 255)
-            plt.figure(figsize=(15, 15), dpi=180)
-            plt.subplot(1, 3, 1)
-            plt.imshow(image.permute(1, 2, 0) * torch.tensor(IMAGENET_STD) + torch.tensor(IMAGENET_MEAN))
-            plt.subplot(1, 3, 2)
-            plt.imshow(lda_predict, plt.cm.hot)
-            plt.subplot(1, 3, 3)
-            plt.imshow(mask, 'gray')
+            print(features.shape)
+            scores, masks = model.predict(torch.from_numpy(features))
+            plt.imshow(masks[0], cmap=cm.hot)
+            # os.makedirs(os.path.join('/home/wwkkb/MVTec', class_, 'test/hot'), exist_ok=True)
             plt.savefig(os.path.join(cur_output_dir, image_name))
-            plt.close()
-            # cv.imwrite(os.path.join(cur_output_dir, image_name), mask)
+            plt.colorbar()
+            plt.show()
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
-
-
-            gc.collect()
-            torch.cuda.empty_cache()
+    # lda.fit(train,label)
+    # cur_output_dir = os.path.join(cur_classname_output_dir, 'train', 'good1')
+    # os.makedirs(cur_output_dir, exist_ok=True)
+    # for i in tqdm(range(len(train_dataset)), desc='train result', leave=False):
+    #     image_path = train_dataset.img_fns[i]
+    #     image_name = os.path.basename(image_path)
+    #     image = Image.open(image_path).convert("RGB")
+    #     image = train_dataset.transform_img(image)
+    #     forward_hook.features = []
+    #     try:
+    #         backbone(image[None].to(device))
+    #     except patchcore.common.LastLayerToExtractReachedException:
+    #         pass
+    #     features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
+    #
+    #     print(features.shape)
+    #     # def PCA_w(features,pca):
+    #     #     b, c, h, w = features.shape
+    #     #     features = (features.reshape(-1, features.shape[1])).cpu().numpy()
+    #     #     features = torch.tensor(pca.transform(features))
+    #     #     features = features.cuda()
+    #     #     return features,b,h,w
+    #     # features,b,h,w=PCA_w(features,pca)
+    #     # features=features.reshape(b,n_component_pca,h,w)
+    #
+    #
+    #     features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
+    #     lda_predict = lda.transform(features)
+    #     lda_predict = lda_predict.reshape(forward_hook.features[0].shape[2], forward_hook.features[0].shape[3])
+    #     lda_predict = cv.resize(lda_predict, (image.shape[2], image.shape[1]))
+    #     lda_predict = ndimage.gaussian_filter(lda_predict, sigma=gaussian_filter_sigma)
+    #     # 将结果二值化然后求最大连通域的最小外接矩形。
+    #     if lda_threshold is None:
+    #         lda_mask = lda.predict(features).reshape(forward_hook.features[0].shape[2],
+    #                                                  forward_hook.features[0].shape[3])
+    #         lda_mask = cv.resize(lda_mask, (image.shape[2], image.shape[1]), interpolation=cv.INTER_NEAREST).astype(
+    #             np.uint8) * 255
+    #     else:
+    #         lda_mask = (lda_predict > lda_threshold).astype(np.uint8) * 255
+    #     # cv.imshow('graycsale image', lda_mask)
+    #     cv.imwrite(os.path.join(cur_output_dir, 'mask'+image_name),lda_mask)
+    #
+    #
+    #
+    #
+    #     cn, cc_labels, cc_stats, _ = cv.connectedComponentsWithStats(lda_mask, connectivity=8)
+    #     mask = np.zeros_like(lda_predict, dtype=np.uint8)
+    #     if cn > 1:
+    #         max_cc_labels = np.argmax(np.array([i[-1] for i in cc_stats[1:]])) + 1
+    #         y, x = np.where(cc_labels == max_cc_labels)
+    #         rect = cv.minAreaRect(np.stack([x, y], axis=1))
+    #         box = cv.boxPoints(rect)
+    #         mask = cv.fillPoly(mask, box[None].astype(int), 255)
+    #     plt.figure(figsize=(15, 15), dpi=180)
+    #     plt.subplot(1, 3, 1)
+    #     plt.imshow(image.permute(1, 2, 0) * torch.tensor(IMAGENET_STD) + torch.tensor(IMAGENET_MEAN))
+    #     plt.subplot(1, 3, 2)
+    #     plt.imshow(lda_predict, plt.cm.hot)
+    #     plt.subplot(1, 3, 3)
+    #     plt.imshow(mask, 'gray')
+    #     plt.savefig(os.path.join(cur_output_dir, image_name))
+    #     plt.close()
+    #     # cv.imwrite(os.path.join(cur_output_dir, image_name), mask)
+    #
+    # # 测试数据集
+    # for an in tqdm(os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test')), 'test result'):
+    #     test_dataset = MVTecDataset(train_dataset.root, train_dataset.classname, train_dataset.resize, split='test',
+    #                                 anomaly=an)
+    #     cur_output_dir = os.path.join(cur_classname_output_dir, 'test', f'{an}')
+    #     os.makedirs(cur_output_dir, exist_ok=True)
+    #     for i in tqdm(range(len(test_dataset)), desc=f'test {an} result', leave=False):
+    #         image_path = test_dataset.img_fns[i]
+    #         image_name = os.path.basename(image_path)
+    #         image = Image.open(image_path).convert("RGB")
+    #         image = test_dataset.transform_img(image)
+    #         forward_hook.features = []
+    #         try:
+    #             backbone(image[None].to(device))
+    #         except patchcore.common.LastLayerToExtractReachedException:
+    #             pass
+    #         features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
+    #
+    #
+    #
+    #
+    #         features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
+    #         lda_predict = lda.transform(features)
+    #         lda_predict = lda_predict.reshape(forward_hook.features[0].shape[2], forward_hook.features[0].shape[3])
+    #         lda_predict = cv.resize(lda_predict, (image.shape[2], image.shape[1]))
+    #         lda_predict = ndimage.gaussian_filter(lda_predict, sigma=gaussian_filter_sigma)
+    #
+    #         # 将结果二值化然后求最大连通域的最小外接矩形。
+    #         if lda_threshold is None:
+    #             lda_mask = lda.predict(features).reshape(forward_hook.features[0].shape[2],
+    #                                                      forward_hook.features[0].shape[3])
+    #             lda_mask = cv.resize(lda_mask, (image.shape[2], image.shape[1]), interpolation=cv.INTER_NEAREST).astype(
+    #                 np.uint8) * 255
+    #         else:
+    #             lda_mask = (lda_predict > lda_threshold).astype(np.uint8) * 255
+    #         cv.imwrite(os.path.join(cur_output_dir, 'mask' + image_name), lda_mask)
+    #         cn, cc_labels, cc_stats, _ = cv.connectedComponentsWithStats(lda_mask, connectivity=8)
+    #         mask = np.zeros_like(lda_predict, dtype=np.uint8)
+    #         if cn > 1:
+    #             max_cc_labels = np.argmax(np.array([i[-1] for i in cc_stats[1:]])) + 1
+    #             y, x = np.where(cc_labels == max_cc_labels)
+    #             rect = cv.minAreaRect(np.stack([x, y], axis=1))
+    #             box = cv.boxPoints(rect)
+    #             mask = cv.fillPoly(mask, box[None].astype(int), 255)
+    #         plt.figure(figsize=(15, 15), dpi=180)
+    #         plt.subplot(1, 3, 1)
+    #         plt.imshow(image.permute(1, 2, 0) * torch.tensor(IMAGENET_STD) + torch.tensor(IMAGENET_MEAN))
+    #         plt.subplot(1, 3, 2)
+    #         plt.imshow(lda_predict, plt.cm.hot)
+    #         plt.subplot(1, 3, 3)
+    #         plt.imshow(mask, 'gray')
+    #         plt.savefig(os.path.join(cur_output_dir, image_name))
+    #         plt.close()
+    #         # cv.imwrite(os.path.join(cur_output_dir, image_name), mask)
+    #
+    #
+    #
+    #
+    #         gc.collect()
+    #         torch.cuda.empty_cache()
 

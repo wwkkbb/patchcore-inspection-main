@@ -156,22 +156,22 @@ class PatchCore(torch.nn.Module):
         """Computes and sets the support features for SPADE."""
         _ = self.forward_modules.eval()
 
-        def _image_to_features(input_image):
-            with torch.no_grad():
-                input_image = input_image.to(torch.float).to(self.device)
-                return self._embed(input_image)
-
-        features = []
-        with tqdm.tqdm(
-            input_data, desc="Computing support features...", position=1, leave=False
-        ) as data_iterator:
-            for image in data_iterator:
-                if isinstance(image, dict):
-                    image = image["image"]
-                features.append(_image_to_features(image))
-
-        features = np.concatenate(features, axis=0)
-        features = self.featuresampler.run(features)
+        # def _image_to_features(input_image):
+        #     with torch.no_grad():
+        #         input_image = input_image.to(torch.float).to(self.device)
+        #         return self._embed(input_image)
+        #
+        # features = []
+        # with tqdm.tqdm(
+        #     input_data, desc="Computing support features...", position=1, leave=False
+        # ) as data_iterator:
+        #     for image in data_iterator:
+        #         if isinstance(image, dict):
+        #             image = image["image"]
+        #         features.append(_image_to_features(image))
+        #
+        # features = np.concatenate(features, axis=0)
+        features = self.featuresampler.run(input_data)
 
         self.anomaly_scorer.fit(detection_features=[features])
 
@@ -205,10 +205,13 @@ class PatchCore(torch.nn.Module):
         images = images.to(torch.float).to(self.device)
         _ = self.forward_modules.eval()
 
-        batchsize = images.shape[0]
+        batchsize = 1
         with torch.no_grad():
-            features, patch_shapes = self._embed(images, provide_patch_shapes=True)
+            # features, patch_shapes = self._embed(images, provide_patch_shapes=True)
+            features = images
             features = np.asarray(features)
+            features = np.ascontiguousarray(features)
+            patch_shapes=[80,80]
 
             patch_scores = image_scores = self.anomaly_scorer.predict([features])[0]
             image_scores = self.patch_maker.unpatch_scores(
@@ -220,8 +223,9 @@ class PatchCore(torch.nn.Module):
             patch_scores = self.patch_maker.unpatch_scores(
                 patch_scores, batchsize=batchsize
             )
-            scales = patch_shapes[0]
-            patch_scores = patch_scores.reshape(batchsize, scales[0], scales[1])
+
+
+            patch_scores = patch_scores.reshape(batchsize, patch_shapes[0], patch_shapes[0])
 
             masks = self.anomaly_segmentor.convert_to_segmentation(patch_scores)
 
