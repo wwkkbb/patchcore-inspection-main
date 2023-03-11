@@ -1,5 +1,7 @@
 import os
 import gc
+import heapq
+import cv2
 import torch
 import patchcore
 import cv2 as cv
@@ -26,15 +28,17 @@ from sklearn.decomposition import PCA, FactorAnalysis
 from sklearn.decomposition import TruncatedSVD
 import matplotlib.pylab as plt
 import matplotlib.cm as cm
+
 resize = 640
 # data_root = '/home/flyinghu/Data/mvtec_anomaly_detection'
 data_root = '/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVTec'
 backbone_name = 'wideresnet50'
 layer = 'layer2'
 device = 'cuda'
-output_dir = f'log/cl_{backbone_name}_{layer}'
-kmeans_f_num = 5000
-lda_f_num = 500
+kmeans_f_rate = 0.01
+rate_unlabel=0.02
+lda_f_num = 5000
+output_dir = f'log/log/cl_1_good{backbone_name}_{layer}'
 # kmeans_f_num = 50000
 # lda_f_num = 5000
 foreground_ratio = 0.2
@@ -45,7 +49,7 @@ n_clusters = 4
 
 object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood']
 CLASS_NAMES = [
-     'bottle','cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
+    'bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
     'toothbrush', 'transistor', 'wood', 'zipper'
 ]
 
@@ -58,9 +62,9 @@ class MVTecDataset(torch.utils.data.Dataset):
         self.classname = classname
         self.resize = resize
         self.classpath = os.path.join(root, classname, 'train', 'good3') if split == 'train' else os.path.join(root,
-                                                                                                              classname,
-                                                                                                              'test',
-                                                                                                              anomaly)
+                                                                                                               classname,
+                                                                                                               'test',
+                                                                                                               anomaly)
         self.img_fns = [os.path.join(self.classpath, fn) for fn in os.listdir(self.classpath) if
                         os.path.isfile(os.path.join(self.classpath, fn))]
         self.transform_img = transforms.Compose([
@@ -136,10 +140,10 @@ for classname in CLASS_NAMES:
     #     x.append(i.unsqueeze(0))
     # forward_hook.features=x
 
-
     print('kmeans')
     kmeans.fit(image_features.reshape(-1, features.shape[1])[
-                   np.random.permutation(image_features.reshape(-1, features.shape[1]).shape[0])[:kmeans_f_num]])
+                   np.random.permutation(image_features.reshape(-1, features.shape[1]).shape[0])[
+                   :(kmeans_f_rate * np.sum(image_features.shape)).astype(int)]])
     # labels = kmeans.labels_
     print('kmeans predict')
     labels = kmeans.predict(image_features.reshape(-1, features.shape[1]))
@@ -210,52 +214,57 @@ for classname in CLASS_NAMES:
     #
     # print('Accuracy:%f' % clf.score(data_all[int(len(data_all)*rate/10):], unlabeled_data_true))
 
-
     def test_LabelPropagation(*data):
         X, y, unlabeled_data_all = data
-        sampling_percentage = 0.05
-        feature_dimension=512
+        sampling_percentage = 0.1
+        feature_dimension = 512
         model = sampler.GreedyCoresetSampler(
             percentage=sampling_percentage,
             device=torch.device("cpu"),
             dimension_to_project_features_to=feature_dimension,
         )
-        unlabeled_datas=None
-        num=20
-        for sa in range(num):
-            unlabeled_data=torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all)/num)*sa:int(len(unlabeled_data_all)/num)*(sa+1)])
-            unlabeled_data = model.run(unlabeled_data)
-            if unlabeled_datas==None:
-                unlabeled_datas=unlabeled_data
-            else:
-                unlabeled_datas=torch.cat((unlabeled_datas,unlabeled_data),dim=0)
-        unlabeled_data=model.run(unlabeled_datas)
-        unlabeled_data=unlabeled_data.numpy()
-        unlabeled_data=unlabeled_data.copy()
-        train_unlabel=-np.ones(len(unlabeled_data))
-        train_all=np.vstack((X,unlabeled_data))
-        label_all=np.hstack((y,train_unlabel))
+        unlabeled_datas = None
+        num = 20
+        # for sa in range(num):
+        #     unlabeled_data = torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all) / num) * sa:int(
+        #         len(unlabeled_data_all) / num) * (sa + 1)])
+        #     unlabeled_data = model.run(unlabeled_data)
+        #     if unlabeled_datas == None:
+        #         unlabeled_datas = unlabeled_data
+        #     else:
+        #         unlabeled_datas = torch.cat((unlabeled_datas, unlabeled_data), dim=0)
+        # unlabeled_data=model.run(unlabeled_datas)
+        idx=np.random.permutation(len(unlabeled_data_all))[:int(rate_unlabel*len(unlabeled_data_all))]
+        unlabeled_data = (unlabeled_data_all[idx])
+        unlabeled_data = unlabeled_data.copy()
+        train_unlabel = -np.ones(len(unlabeled_data))
+        train_all = np.vstack((X, unlabeled_data))
+        label_all = np.hstack((y, train_unlabel))
 
-        clf = LabelPropagation(max_iter=500, kernel='rbf', gamma=5)
+        clf = LabelPropagation(max_iter=1000, kernel='rbf', gamma=5)
         clf.fit(train_all, label_all)
-        return train_all,clf.predict(train_all)
+        train_all = train_all[-len(unlabeled_data):]
+        return train_all, clf.predict(train_all), clf
 
         # 获取预测准确率
         # print('Accuracy:%f' % clf.score(X[unlabeled_indices], true_labels))
+
+
     labeled_data = np.vstack((background_features, foreground_features))
     labeled_label = np.hstack((background_label, foreground_label))
-    train,label=test_LabelPropagation(labeled_data,labeled_label,image_features.reshape(-1, features.shape[1]))
-    trains=np.zeros_like(train)
-    sum=0
+    train, label, clf = test_LabelPropagation(labeled_data, labeled_label,
+                                              image_features.reshape(-1, features.shape[1]))
+    trains = np.zeros_like(train)
+    sum = 0
     for i in range(len(label)):
-        if label[i]>0:
-            trains[sum]=train[i]
-            sum+=1
-    trains=trains[:sum]
+        if label[i] > 0:
+            trains[sum] = train[i]
+            sum += 1
+    trains = trains[:sum]
 
     image_dimension = 112
 
-    print(257)
+
     def _standard_patchcore(image_dimension):
         patchcore_instance = patchcore_model.PatchCore(torch.device("cpu"))
         backbone = models.wide_resnet50_2(pretrained=False)
@@ -275,16 +284,26 @@ for classname in CLASS_NAMES:
     model = _standard_patchcore(image_dimension)
     model.fit(trains)
 
-    #test
-    for an in tqdm(os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test')), 'test result'):
+    # test
+    x=os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test'))
+    for i in range(len(x)):
+        if x[i]=='good':
+            x[i]=x[0]
+            x[0]='good'
+    for an in tqdm(x, 'test result'):
         test_dataset = MVTecDataset(train_dataset.root, train_dataset.classname, train_dataset.resize, split='test',
                                     anomaly=an)
+
         cur_output_dir = os.path.join(cur_classname_output_dir, 'test', f'{an}')
         os.makedirs(cur_output_dir, exist_ok=True)
+        max_s = []
+        min_s = []
         for i in tqdm(range(len(test_dataset)), desc=f'test {an} result', leave=False):
             image_path = test_dataset.img_fns[i]
             image_name = os.path.basename(image_path)
             image = Image.open(image_path).convert("RGB")
+            image_test=image
+            image_test=np.array(image_test).astype(np.uint8)
             image = test_dataset.transform_img(image)
             forward_hook.features = []
             try:
@@ -293,17 +312,145 @@ for classname in CLASS_NAMES:
                 pass
             features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
             features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
-
-            print(features.shape)
+            label = clf.predict(features)
+            # image_features = features.permute(0, 2, 3, 1).cpu().numpy()  # b x h x w x 512
+            #
+            # print('kmeans')
+            # kmeans.fit(image_features.reshape(-1, features.shape[1])[
+            #                np.random.permutation(image_features.reshape(-1, features.shape[1]).shape[0])[
+            #                :kmeans_f_num]])
+            # # labels = kmeans.labels_
+            # print('kmeans predict')
+            # labels = kmeans.predict(image_features.reshape(-1, features.shape[1]))
+            # labels_imgs = labels.reshape(len(forward_hook.features), forward_hook.features[0].shape[2],
+            #                              forward_hook.features[0].shape[3])
+            # if background_ratio < 0:
+            #     background_ratio = -background_ratio / labels_imgs.shape[1]
+            # # 以ratio作为边界框，选取边界框到边界的值统计hist
+            # background_mask = np.zeros(
+            #     (len(forward_hook.features), forward_hook.features[0].shape[2], forward_hook.features[0].shape[3]),
+            #     dtype=bool)
+            # background_mask[:, :int(background_ratio * labels_imgs.shape[1]), :] = True
+            # background_mask[:, -int(background_ratio * labels_imgs.shape[1]):, :] = True
+            # background_mask[:,
+            # int(background_ratio * labels_imgs.shape[1]):-int(background_ratio * labels_imgs.shape[1]),
+            # :int(background_ratio * labels_imgs.shape[2])] = True
+            # background_mask[:,
+            # int(background_ratio * labels_imgs.shape[1]):-int(background_ratio * labels_imgs.shape[1]),
+            # -int(background_ratio * labels_imgs.shape[2]):] = True
+            # bidx, hidx, widx = np.where(background_mask)
+            # background_features = image_features[bidx, hidx, widx, :]
+            # background_labels = labels_imgs[bidx, hidx, widx]
+            # one_hot = np.zeros((background_labels.shape[0], kmeans.n_clusters))
+            # one_hot[np.arange(one_hot.shape[0]), background_labels] = 1
+            # hist = one_hot.sum(0)
+            # # background_label_u = np.arange(kmeans.n_clusters)[hist > one_hot.shape[0] / kmeans.n_clusters]
+            # background_label_u = [hist.argmax()]
+            # background_p_mask = (np.stack([background_labels == l for l in background_label_u], 1).sum(1) > 0)
+            # background_features = background_features[background_p_mask]
+            # background_label = np.zeros((background_features.shape[0]), dtype=int)
+            #
+            # # 前景
+            # foreground_mask = np.zeros(
+            #     (len(forward_hook.features), forward_hook.features[0].shape[2], forward_hook.features[0].shape[3]),
+            #     dtype=bool)
+            # foreground_mask[:, int(labels_imgs.shape[1] / 2 - labels_imgs.shape[1] * foreground_ratio):int(
+            #     labels_imgs.shape[1] / 2 + labels_imgs.shape[1] * foreground_ratio),
+            # int(labels_imgs.shape[2] / 2 - labels_imgs.shape[2] * foreground_ratio):int(
+            #     labels_imgs.shape[2] / 2 + labels_imgs.shape[2] * foreground_ratio)] = True
+            #
+            # bidx, hidx, widx = np.where(foreground_mask)
+            # foreground_features = image_features[bidx, hidx, widx, :]
+            # foreground_labels = labels_imgs[bidx, hidx, widx]
+            # foreground_p_mask = (
+            #         np.stack([foreground_labels != l for l in background_label_u], 1).sum(1) >= len(background_label_u))
+            # foreground_features = foreground_features[foreground_p_mask]
+            # foreground_label = np.ones((foreground_features.shape[0]), dtype=int)
+            # background_idx = np.random.permutation(len(background_features))[:lda_f_num]
+            # foreground_idx = np.random.permutation(len(foreground_features))[:lda_f_num]
+            # background_features = background_features[background_idx]
+            # foreground_features = foreground_features[foreground_idx]
+            # background_label = background_label[background_idx]
+            # foreground_label = foreground_label[foreground_idx]
+            #
+            # def test_LabelPropagation(*data):
+            #     X, y, unlabeled_data_all = data
+            #     # sampling_percentage = 0.05
+            #     # feature_dimension = 512
+            #     # model = sampler.GreedyCoresetSampler(
+            #     #     percentage=sampling_percentage,
+            #     #     device=torch.device("cpu"),
+            #     #     dimension_to_project_features_to=feature_dimension,
+            #     # )
+            #     # unlabeled_datas = None
+            #     # num = 20
+            #     # for sa in range(num):
+            #     #     unlabeled_data = torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all) / num) * sa:int(
+            #     #         len(unlabeled_data_all) / num) * (sa + 1)])
+            #     #     unlabeled_data = model.run(unlabeled_data)
+            #     #     if unlabeled_datas == None:
+            #     #         unlabeled_datas = unlabeled_data
+            #     #     else:
+            #     #         unlabeled_datas = torch.cat((unlabeled_datas, unlabeled_data), dim=0)
+            #     # unlabeled_data = model.run(unlabeled_datas)
+            #     # unlabeled_data = unlabeled_data.numpy()
+            #     # unlabeled_data = unlabeled_data.copy()
+            #     train_unlabel = -np.ones(len(unlabeled_data_all))
+            #     train_all = np.vstack((X, unlabeled_data_all))
+            #     label_all = np.hstack((y, train_unlabel))
+            #
+            #     clf = LabelPropagation(max_iter=500, kernel='rbf', gamma=5)
+            #     clf.fit(train_all, label_all)
+            #     return train_all[-len(unlabeled_data_all):], clf.predict(train_all)[-len(unlabeled_data_all):]
+            #
+            #     # 获取预测准确率
+            #     # print('Accuracy:%f' % clf.score(X[unlabeled_indices], true_labels))
+            #
+            #
+            # labeled_data = np.vstack((background_features, foreground_features))
+            # labeled_label = np.hstack((background_label, foreground_label))
+            # train, label = test_LabelPropagation(labeled_data, labeled_label,
+            #                                      image_features.reshape(-1, features.shape[1]))
+            # features=((train.T)*label).T
+            #
+            # print(features.shape)
             scores, masks = model.predict(torch.from_numpy(features))
-            plt.imshow(masks[0], cmap=cm.hot)
-            # os.makedirs(os.path.join('/home/wwkkb/MVTec', class_, 'test/hot'), exist_ok=True)
+            # h=pow(len(label),0.5)
+            label = label.reshape((80, 80))
+            label = cv2.resize(label, (112, 112))
+            min_ = (masks[0]).min()
+            max_ = (masks[0]).max()
+            min_s.append(min_)
+            max_s.append(max_)
+
+            mask = masks[0] * label
+            mask = np.where(mask < min_, min_, mask)
+            cur_classname_mask = os.path.join(train_dataset.root, train_dataset.classname, 'ground_truth', f'{an}',image_name[:3]+'_mask.png')
+
+            mask=cv2.resize(mask,(224,224))
+            if f'{an}'=='agood' or f'{an}'=='aGOOD' or f'{an}'=='good':
+                mask_true=np.zeros((mask.shape[0],mask.shape[1],3))
+            else:
+                mask_true = cv2.imread(cur_classname_mask)
+                mask_true = cv.cvtColor(mask_true, cv.COLOR_BGR2RGB)
+            plt.figure(figsize=(30, 30), dpi=360)
+            plt.subplot(1, 3, 1)
+            plt.imshow(cv2.resize(mask_true,mask.shape))
+            plt.subplot(1, 3, 2)
+            plt.imshow(cv2.resize(image_test,mask.shape))
+            plt.subplot(1, 3, 3)
+            plt.imshow(mask, cmap=cm.hot)
+            os.makedirs(cur_output_dir, exist_ok=True)
             plt.savefig(os.path.join(cur_output_dir, image_name))
             plt.colorbar()
             plt.show()
+        with open(os.path.join(cur_output_dir, 'max_min.txt'), 'w') as file:
+            file.write(str([min_s, max_s]))
+
+    del features
+    del clf
     gc.collect()
     torch.cuda.empty_cache()
-
 
     # lda.fit(train,label)
     # cur_output_dir = os.path.join(cur_classname_output_dir, 'train', 'good1')
@@ -429,4 +576,3 @@ for classname in CLASS_NAMES:
     #
     #         gc.collect()
     #         torch.cuda.empty_cache()
-

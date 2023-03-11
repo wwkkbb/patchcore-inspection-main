@@ -84,36 +84,93 @@ def _approximate_greedycoreset_sampler_with_reduction(
 
 def test_dummy_patchcore1():
     import cv2
+    output_dir = f'log/test_pa'
+    data_path=r'/home/wwkkb/MVTec'
+    data_mask_path=r'/home/wwkkb/cl_wideresnet50_layer2'
+    os.makedirs(output_dir, exist_ok=True)
     image_dimension = 112
     model = _standard_patchcore(image_dimension)
-    class_='screw'
-    path = os.path.join('/home/wwkkb/MVTec',class_,'train/good')
-    dir = os.listdir(path)
-    images = np.stack(cv2.resize(cv2.imread(os.path.join(path, img)), (112, 112)) for img in dir)
-    images=torch.from_numpy(images)
-    images = images.permute(0, 3, 1, 2)
-    training_dataloader = torch.utils.data.DataLoader(images, batch_size=4)
-    print(model.featuresampler)
-    model.fit(training_dataloader)
-    bloken='scratch_head'
-    path_test = os.path.join('/home/wwkkb/MVTec',class_,'test',bloken)
-    test_features =np.stack(cv2.resize(cv2.imread(os.path.join(path_test, img)), (112, 112)) for img in dir[:20])
 
-    test_features=torch.from_numpy(test_features)
-    test_features=test_features.permute(0,3,1,2)
-    scores, masks = model.predict(test_features)
-    for i in range(len(masks)):
-        plt.imshow(masks[i], cmap=cm.hot)
-        os.makedirs(os.path.join('/home/wwkkb/MVTec',class_,'test/hot'),exist_ok=True)
-        plt.savefig(os.path.join('/home/wwkkb/MVTec',class_,'test/hot',str(i)+'png'))
-        plt.colorbar()
-        plt.show()
-    # mask0=np.uint8(masks[0])
-    # cv2.imshow("x",mask0)
-    # cv2.waitKey(0)
-    assert all([score > 0 for score in scores])
-    for mask in masks:
-        assert np.all(mask.shape == (image_dimension, image_dimension))
+    object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood']
+    CLASS_NAMES = [
+        'bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
+        'toothbrush', 'transistor', 'wood', 'zipper'
+    ]
+
+    for classname in CLASS_NAMES:
+        # for classname in ['screw']:
+        if classname in object_classnames:
+            continue
+        cur_classname_output_dir = os.path.join(output_dir, classname)
+
+        path = os.path.join(data_path,classname,'train/good3')
+        path_mask = os.path.join(data_mask_path,classname,'train/good3')
+
+        dir = os.listdir(path)
+        images=np.ones((len(dir),112,112,3),dtype=np.uint8)
+        i=0
+        for img in dir:
+            image=cv2.imread(os.path.join(path, img))
+            mask=cv2.imread(os.path.join(path_mask,'mask'+img))
+            image,mask=cv2.resize(image,(112,112)),cv2.resize(mask,(112,112))/255
+            images[i]=np.uint8(image*mask)
+
+            # x=images[i]
+            # cv2.imshow('x',np.uint8(x))
+            # cv2.waitKey(0)
+            i += 1
+        # os.makedirs(os.path.join('/home/wwkkb/result',classname),exist_ok=True)
+        # cv2.imwrite(os.path.join('/home/wwkkb/result',classname,'good0.png'),images[0])
+        # cv2.imwrite(os.path.join('/home/wwkkb/result',classname,'good1.png'),images[1])
+        # cv2.imwrite(os.path.join('/home/wwkkb/result',classname,'good2.png'),images[2])
+        # images = np.stack(cv2.resize(cv2.imread(os.path.join(path, img)), (112, 112)) for img in dir)
+        images=torch.from_numpy(images)
+        images = images.permute(0, 3, 1, 2)
+        training_dataloader = torch.utils.data.DataLoader(images, batch_size=64)
+        print(model.featuresampler)
+        model.fit(training_dataloader)
+        test_path=os.path.join(data_path,classname,'test')
+        broken_list=sorted(os.listdir(test_path))
+        for i in range(len(broken_list)):
+            broken=broken_list[i]
+            path = os.path.join(data_path, classname, 'test',broken)
+            path_mask = os.path.join(data_mask_path, classname, 'test',broken)
+            dir = os.listdir(path)
+            images = np.ones((len(dir), 112, 112, 3), dtype=np.uint8)
+            i = 0
+            for img in dir:
+                image = cv2.imread(os.path.join(path, img))
+                mask = cv2.imread(os.path.join(path_mask, 'mask' + img))
+                image, mask = cv2.resize(image, (112, 112)), cv2.resize(mask, (112, 112)) / 255
+                images[i] = np.uint8(image * mask)
+                i+=1
+            # os.makedirs(os.path.join('/home/wwkkb/result', classname,broken),exist_ok=True)
+            # cv2.imwrite(os.path.join('/home/wwkkb/result', classname, broken,'000.png'), images[0])
+            # cv2.imwrite(os.path.join('/home/wwkkb/result', classname, broken,'001.png'), images[1])
+
+
+            # test_features =np.stack(cv2.resize(cv2.imread(os.path.join(path_test, img)), (112, 112)) for img in dir[:20])
+            # mask_=cv2.imread('/home/wwkkb/cl_wideresnet50_layer2/bottle/test/broken_small/mask001.png')/255
+            # test_features[1]=cv2.resize(mask_,(112,112))*test_features[1]
+            # for _ in test_features:
+            #
+            #     x=_
+            #     cv2.imshow('x',np.uint8(x))
+            #     cv2.waitKey(0)
+            test_features=images
+            test_features=torch.from_numpy(test_features)
+            test_features=test_features.permute(0,3,1,2)
+            scores, masks = model.predict(test_features)
+            for i in range(len(masks)):
+                plt.imshow(masks[i], cmap=cm.hot)
+                os.makedirs(os.path.join('/home/wwkkb/Mvtec_result',classname,'test',broken),exist_ok=True)
+                plt.savefig(os.path.join('/home/wwkkb/Mvtec_result',classname,'test',broken,str(i)+'.png'))
+                plt.colorbar()
+                plt.show()
+
+            assert all([score > 0 for score in scores])
+            for mask in masks:
+                assert np.all(mask.shape == (image_dimension, image_dimension))
 
 
 
