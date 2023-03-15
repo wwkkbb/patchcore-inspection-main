@@ -29,36 +29,54 @@
 # svd = TruncatedSVD()
 # dt = svd.fit_transform(iris.data)
 # axes[2].scatter(dt[:,0], dt[:,1], c=iris.target)
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
+# from sklearn.decomposition import PCA
+# import matplotlib.pyplot as plt
+# import numpy as np
+#
+# X = np.array([[12, 350, 1.825, 0.102, 315, 0, 2, 4], [25, 300, 5.57, 0.45, 220, 25, 3, 2.5],  [25, 300, 5.25, 1.1, 220, 20, 4, 3]])
+# Y = np.array([22, 300, 4.25, 1.86, 210, 18, 3, 2])
+# # n_components指定降维后的维数
+# pca = PCA(n_components=2)
+# print(pca)
+# # 应用于训练集数据进行PCA降维
+# pca.fit(X)
+# # 用X来训练PCA模型，同时返回降维后的数据
+# newX = pca.fit_transform(X)
+# print(newX)
+# # 将降维后的数据转换成原始数据，
+# pca_new = pca.transform(X)
+# print(pca_new.shape)
+# # 输出具有最大方差的成分
+# print(pca.components_)
+# # 输出所保留的n个成分各自的方差百分比
+# print(pca.explained_variance_ratio_)
+# # 输出所保留的n个成分各自的方差
+# print(pca.explained_variance_)
+# # 输出未处理的特征维数
+# print(pca.n_features_)
+# # 输出训练集的样本数量
+# print(pca.n_samples_)
+# # 输出协方差矩阵
+# print(pca.noise_variance_)
+# # 每个特征的奇异值
+# print(pca.ingular_values_)
+# # 用生成模型计算数据精度矩阵
+# print(pca.get_precision())
 import numpy as np
+# from sklearn.metrics import confusion_matrix
+# y_pred, y_true =[1,0,1,0], [0,0,1,0]
+# x=confusion_matrix(y_true=y_true, y_pred=y_pred)
+# print(x)
+from sklearn.metrics import accuracy_score
+import cv2
 
-X = np.array([[12, 350, 1.825, 0.102, 315, 0, 2, 4], [25, 300, 5.57, 0.45, 220, 25, 3, 2.5],  [25, 300, 5.25, 1.1, 220, 20, 4, 3]])
-Y = np.array([22, 300, 4.25, 1.86, 210, 18, 3, 2])
-# n_components指定降维后的维数
-pca = PCA(n_components=2)
-print(pca)
-# 应用于训练集数据进行PCA降维
-pca.fit(X)
-# 用X来训练PCA模型，同时返回降维后的数据
-newX = pca.fit_transform(X)
-print(newX)
-# 将降维后的数据转换成原始数据，
-pca_new = pca.transform(X)
-print(pca_new.shape)
-# 输出具有最大方差的成分
-print(pca.components_)
-# 输出所保留的n个成分各自的方差百分比
-print(pca.explained_variance_ratio_)
-# 输出所保留的n个成分各自的方差
-print(pca.explained_variance_)
-# 输出未处理的特征维数
-print(pca.n_features_)
-# 输出训练集的样本数量
-print(pca.n_samples_)
-# 输出协方差矩阵
-print(pca.noise_variance_)
-# 每个特征的奇异值
-print(pca.ingular_values_)
-# 用生成模型计算数据精度矩阵
-print(pca.get_precision())
+# y_pred是预测标签
+y_pred = cv2.imread("/home/wwkkb/MVTec/bottle/test/broken_large/000.png")
+image1 = cv2.cvtColor(y_pred, cv2.COLOR_BGR2GRAY)
+
+ret, image1 = cv2.threshold(image1, 80, 255, cv2.THRESH_BINARY)
+
+# ret,image1 = cv2.threshold(y_pred,80,255,cv2.THRESH_BINARY)
+x = accuracy_score(y_true=y_true.flatten(), y_pred=y_pred.flatten())
+
+print(1)

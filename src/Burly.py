@@ -38,7 +38,7 @@ device = 'cuda'
 kmeans_f_rate = 0.01
 # rate_unlabel=0.02
 # lda_f_num = 5000
-rate_unlabel=0.02
+rate_unlabel = 0.02
 lda_f_num = 500
 output_dir = f'log/log/cl_1_good1_mask_unlabel{backbone_name}_{layer}'
 # kmeans_f_num = 50000
@@ -196,6 +196,7 @@ for classname in CLASS_NAMES:
     background_label = background_label[background_idx]
     foreground_label = foreground_label[foreground_idx]
 
+
     # data_all = np.vstack((background_features, foreground_features))
     # label_all = np.hstack((background_label, foreground_label))
     # rng = np.random.RandomState(0)
@@ -236,7 +237,7 @@ for classname in CLASS_NAMES:
         #     else:
         #         unlabeled_datas = torch.cat((unlabeled_datas, unlabeled_data), dim=0)
         # unlabeled_data=model.run(unlabeled_datas)
-        idx=np.random.permutation(len(unlabeled_data_all))[:int(rate_unlabel*len(unlabeled_data_all))]
+        idx = np.random.permutation(len(unlabeled_data_all))[:int(rate_unlabel * len(unlabeled_data_all))]
         unlabeled_data = (unlabeled_data_all[idx])
         unlabeled_data = unlabeled_data.copy()
         train_unlabel = -np.ones(len(unlabeled_data))
@@ -246,17 +247,17 @@ for classname in CLASS_NAMES:
         clf = LabelPropagation(max_iter=1000, kernel='rbf', gamma=5)
         clf.fit(train_all, label_all)
         # train_all = train_all[-len(unlabeled_data):]
-        sum=0
+        sum = 0
         # labels=[]
-        div=20
-        devide=int(len(unlabeled_data_all)/div)
+        div = 20
+        devide = int(len(unlabeled_data_all) / div)
         for i in range(div):
-            pre=unlabeled_data_all[i*devide:(i+1)*devide]
-            label=clf.predict(pre)
-            index_=np.where(label==1)
-            x=pre[index_]
-            unlabeled_data_all[sum:sum+len(index_[0])]=x
-            sum+=len(index_[0])
+            pre = unlabeled_data_all[i * devide:(i + 1) * devide]
+            label = clf.predict(pre)
+            index_ = np.where(label == 1)
+            x = pre[index_]
+            unlabeled_data_all[sum:sum + len(index_[0])] = x
+            sum += len(index_[0])
         return unlabeled_data_all[:sum], clf
 
         # 获取预测准确率
@@ -265,8 +266,8 @@ for classname in CLASS_NAMES:
 
     labeled_data = np.vstack((background_features, foreground_features))
     labeled_label = np.hstack((background_label, foreground_label))
-    trains,  clf = test_LabelPropagation(labeled_data, labeled_label,
-                                              image_features.reshape(-1, features.shape[1]))
+    trains, clf = test_LabelPropagation(labeled_data, labeled_label,
+                                        image_features.reshape(-1, features.shape[1]))
     # trains = np.zeros_like(train)
     # sum = 0
     # for i in range(len(label)):
@@ -294,15 +295,17 @@ for classname in CLASS_NAMES:
             spade_nn=2,
         )
         return patchcore_instance
+
+
     model = _standard_patchcore(image_dimension)
     model.fit(trains)
 
     # test
-    x=os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test'))
+    x = os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test'))
     for i in range(len(x)):
-        if x[i]=='good':
-            x[i]=x[0]
-            x[0]='good'
+        if x[i] == 'good':
+            x[i] = x[0]
+            x[0] = 'good'
     for an in tqdm(x, 'test result'):
         test_dataset = MVTecDataset(train_dataset.root, train_dataset.classname, train_dataset.resize, split='test',
                                     anomaly=an)
@@ -311,13 +314,13 @@ for classname in CLASS_NAMES:
         os.makedirs(cur_output_dir, exist_ok=True)
         max_s = []
         min_s = []
-        acc_s=[]
+        acc_s = []
         for i in tqdm(range(len(test_dataset)), desc=f'test {an} result', leave=False):
             image_path = test_dataset.img_fns[i]
             image_name = os.path.basename(image_path)
             image = Image.open(image_path).convert("RGB")
-            image_test=image
-            image_test=np.array(image_test).astype(np.uint8)
+            image_test = image
+            image_test = np.array(image_test).astype(np.uint8)
             image = test_dataset.transform_img(image)
             forward_hook.features = []
             try:
@@ -327,6 +330,8 @@ for classname in CLASS_NAMES:
             features = torch.cat(forward_hook.features, 0)  # b x 512 x h x w
             features = features.permute(0, 2, 3, 1).reshape(-1, features.shape[1]).cpu().numpy()
             label = clf.predict(features)
+
+
             # image_features = features.permute(0, 2, 3, 1).cpu().numpy()  # b x h x w x 512
             #
             # print('kmeans')
@@ -431,11 +436,11 @@ for classname in CLASS_NAMES:
             def get_accuracy(scores, true_mask):
                 from heapq import heapify as heapify
                 from sklearn.metrics import accuracy_score
-                if len(true_mask.shape)==3:
-                    true_mask=cv2.cvtColor(true_mask, cv2.COLOR_RGB2GRAY)
+                if len(true_mask.shape) == 3:
+                    true_mask = cv2.cvtColor(true_mask, cv2.COLOR_RGB2GRAY)
                 max_ = scores.max()
                 min_ = scores.min()
-                pre = cv2.resize(((max_ - scores) / (max_ - min_))*255,true_mask.shape).astype('uint8')
+                pre = cv2.resize(((max_ - scores) / (max_ - min_)) * 255, true_mask.shape).astype('uint8')
                 # if ret=='good':
                 #     scores_1=list(scores.flatten())
                 #     heapify(scores_1)
@@ -443,35 +448,36 @@ for classname in CLASS_NAMES:
                 #
                 ret, pre = cv2.threshold(pre, 250, 255, cv2.THRESH_BINARY)
                 return accuracy_score(pre.flatten(), true_mask.flatten()), max_, min_
+
+
             scores, masks = model.predict(torch.from_numpy(features))
             # h=pow(len(label),0.5)
             label = label.reshape((80, 80))
             label = cv2.resize(label, (112, 112))
 
-
-
             mask = masks[0] * label
             # mask = np.where(mask < min_, min_, mask)
-            cur_classname_mask = os.path.join(train_dataset.root, train_dataset.classname, 'ground_truth', f'{an}',image_name[:3]+'_mask.png')
+            cur_classname_mask = os.path.join(train_dataset.root, train_dataset.classname, 'ground_truth', f'{an}',
+                                              image_name[:3] + '_mask.png')
 
-            mask=cv2.resize(mask,(224,224))
-            if f'{an}'=='good':
-                mask_true=np.zeros((mask.shape[0],mask.shape[1],3))
-                mask_true_gray=np.zeros((mask.shape[0],mask.shape[1]))
+            mask = cv2.resize(mask, (224, 224))
+            if f'{an}' == 'good':
+                mask_true = np.zeros((mask.shape[0], mask.shape[1], 3))
+                mask_true_gray = np.zeros((mask.shape[0], mask.shape[1]))
             else:
                 mask_true = cv2.imread(cur_classname_mask)
                 mask_true = cv.cvtColor(mask_true, cv.COLOR_BGR2RGB)
-                mask_true_gray=cv2.imread(cur_classname_mask,0)
-            acc, max_, min_ = get_accuracy( masks[0],mask_true_gray)
+                mask_true_gray = cv2.imread(cur_classname_mask, 0)
+            acc, max_, min_ = get_accuracy(masks[0], mask_true_gray)
             min_s.append(min_)
             max_s.append(max_)
             acc_s.append(acc)
-            mask[0][0]=11.78
+            mask[0][0] = 11.78
             plt.figure(figsize=(30, 30), dpi=360)
             plt.subplot(1, 3, 1)
-            plt.imshow(cv2.resize(mask_true,mask.shape))
+            plt.imshow(cv2.resize(mask_true, mask.shape))
             plt.subplot(1, 3, 2)
-            plt.imshow(cv2.resize(image_test,mask.shape))
+            plt.imshow(cv2.resize(image_test, mask.shape))
             plt.subplot(1, 3, 3)
             plt.imshow(mask, cmap=cm.hot)
             os.makedirs(cur_output_dir, exist_ok=True)
@@ -479,7 +485,7 @@ for classname in CLASS_NAMES:
             plt.colorbar()
             plt.show()
         with open(os.path.join(cur_output_dir, 'max_min_acc.txt'), 'w') as file:
-            file.write(str([min_s, max_s,acc_s]))
+            file.write(str([min_s, max_s, acc_s]))
 
     del features
     del clf
