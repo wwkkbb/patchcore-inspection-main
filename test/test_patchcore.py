@@ -1,5 +1,6 @@
 import os
 
+import cv2
 import numpy as np
 import torch.utils.data
 from torchvision import models
@@ -8,6 +9,8 @@ import patchcore
 from patchcore import patchcore as patchcore_model
 import matplotlib.pylab as plt
 import matplotlib.cm as cm
+
+
 def _dummy_features(number_of_examples, shape_of_examples):
     return torch.Tensor(
         np.stack(number_of_examples * [np.ones(shape_of_examples)], axis=0)
@@ -82,11 +85,26 @@ def _approximate_greedycoreset_sampler_with_reduction(
     )
 
 
+def test_dummy_patchcore():
+    image_dimension = 112
+    model = _standard_patchcore(image_dimension)
+    training_dataloader = _dummy_constant_dataloader(
+        4, [3, image_dimension, image_dimension]
+    )
+    print(model.featuresampler)
+    model.fit(training_dataloader)
+    test_features = torch.Tensor(2 * np.ones([2, 3, image_dimension, image_dimension]))
+    scores, masks = model.predict(test_features)
+
+    assert all([score > 0 for score in scores])
+    for mask in masks:
+        assert np.all(mask.shape == (image_dimension, image_dimension))
+
 def test_dummy_patchcore1():
     import cv2
     output_dir = f'log/test_pa'
-    data_path=r'/home/wwkkb/MVTec'
-    data_mask_path=r'/home/wwkkb/cl_wideresnet50_layer2'
+    data_path = r'/home/wwkkb/MVTec'
+    data_mask_path = r'/home/wwkkb/cl_wideresnet50_layer2'
     os.makedirs(output_dir, exist_ok=True)
     image_dimension = 112
     model = _standard_patchcore(image_dimension)
@@ -103,17 +121,17 @@ def test_dummy_patchcore1():
             continue
         cur_classname_output_dir = os.path.join(output_dir, classname)
 
-        path = os.path.join(data_path,classname,'train/good3')
-        path_mask = os.path.join(data_mask_path,classname,'train/good3')
+        path = os.path.join(data_path, classname, 'train/good3')
+        path_mask = os.path.join(data_mask_path, classname, 'train/good3')
 
         dir = os.listdir(path)
-        images=np.ones((len(dir),112,112,3),dtype=np.uint8)
-        i=0
+        images = np.ones((len(dir), 112, 112, 3), dtype=np.uint8)
+        i = 0
         for img in dir:
-            image=cv2.imread(os.path.join(path, img))
-            mask=cv2.imread(os.path.join(path_mask,'mask'+img))
-            image,mask=cv2.resize(image,(112,112)),cv2.resize(mask,(112,112))/255
-            images[i]=np.uint8(image*mask)
+            image = cv2.imread(os.path.join(path, img))
+            mask = cv2.imread(os.path.join(path_mask, 'mask' + img))
+            image, mask = cv2.resize(image, (112, 112)), cv2.resize(mask, (112, 112)) / 255
+            images[i] = np.uint8(image * mask)
 
             # x=images[i]
             # cv2.imshow('x',np.uint8(x))
@@ -124,17 +142,17 @@ def test_dummy_patchcore1():
         # cv2.imwrite(os.path.join('/home/wwkkb/result',classname,'good1.png'),images[1])
         # cv2.imwrite(os.path.join('/home/wwkkb/result',classname,'good2.png'),images[2])
         # images = np.stack(cv2.resize(cv2.imread(os.path.join(path, img)), (112, 112)) for img in dir)
-        images=torch.from_numpy(images)
+        images = torch.from_numpy(images)
         images = images.permute(0, 3, 1, 2)
         training_dataloader = torch.utils.data.DataLoader(images, batch_size=64)
         print(model.featuresampler)
         model.fit(training_dataloader)
-        test_path=os.path.join(data_path,classname,'test')
-        broken_list=sorted(os.listdir(test_path))
+        test_path = os.path.join(data_path, classname, 'test')
+        broken_list = sorted(os.listdir(test_path))
         for i in range(len(broken_list)):
-            broken=broken_list[i]
-            path = os.path.join(data_path, classname, 'test',broken)
-            path_mask = os.path.join(data_mask_path, classname, 'test',broken)
+            broken = broken_list[i]
+            path = os.path.join(data_path, classname, 'test', broken)
+            path_mask = os.path.join(data_mask_path, classname, 'test', broken)
             dir = os.listdir(path)
             images = np.ones((len(dir), 112, 112, 3), dtype=np.uint8)
             i = 0
@@ -143,11 +161,10 @@ def test_dummy_patchcore1():
                 mask = cv2.imread(os.path.join(path_mask, 'mask' + img))
                 image, mask = cv2.resize(image, (112, 112)), cv2.resize(mask, (112, 112)) / 255
                 images[i] = np.uint8(image * mask)
-                i+=1
+                i += 1
             # os.makedirs(os.path.join('/home/wwkkb/result', classname,broken),exist_ok=True)
             # cv2.imwrite(os.path.join('/home/wwkkb/result', classname, broken,'000.png'), images[0])
             # cv2.imwrite(os.path.join('/home/wwkkb/result', classname, broken,'001.png'), images[1])
-
 
             # test_features =np.stack(cv2.resize(cv2.imread(os.path.join(path_test, img)), (112, 112)) for img in dir[:20])
             # mask_=cv2.imread('/home/wwkkb/cl_wideresnet50_layer2/bottle/test/broken_small/mask001.png')/255
@@ -157,14 +174,14 @@ def test_dummy_patchcore1():
             #     x=_
             #     cv2.imshow('x',np.uint8(x))
             #     cv2.waitKey(0)
-            test_features=images
-            test_features=torch.from_numpy(test_features)
-            test_features=test_features.permute(0,3,1,2)
+            test_features = images
+            test_features = torch.from_numpy(test_features)
+            test_features = test_features.permute(0, 3, 1, 2)
             scores, masks = model.predict(test_features)
             for i in range(len(masks)):
                 plt.imshow(masks[i], cmap=cm.hot)
-                os.makedirs(os.path.join('/home/wwkkb/Mvtec_result',classname,'test',broken),exist_ok=True)
-                plt.savefig(os.path.join('/home/wwkkb/Mvtec_result',classname,'test',broken,str(i)+'.png'))
+                os.makedirs(os.path.join('/home/wwkkb/Mvtec_result', classname, 'test', broken), exist_ok=True)
+                plt.savefig(os.path.join('/home/wwkkb/Mvtec_result', classname, 'test', broken, str(i) + '.png'))
                 plt.colorbar()
                 plt.show()
 
@@ -173,22 +190,55 @@ def test_dummy_patchcore1():
                 assert np.all(mask.shape == (image_dimension, image_dimension))
 
 
+def _dummy_constant_dataloader_image(path):
+    dir =sorted(os.listdir(path))
+    features = None
+    for i in range(len(dir)):
+        img = cv2.imread(os.path.join(path, dir[i]))
+        if type(features) is not  np.ndarray:
+            # h, w, c = img.shape
+            features = np.ones((len(dir), 112, 112, 3))
+        img=cv2.resize(img, (112,112))
+        features[i] = img
+    features=torch.from_numpy(features)
+    features=features.permute(0,3,1,2)
+    batch_size=len(features)
+    return torch.utils.data.DataLoader(features, batch_size),features
 
-def test_dummy_patchcore():
+def test_dummy_patchcore2():
     image_dimension = 112
     model = _standard_patchcore(image_dimension)
-    training_dataloader = _dummy_constant_dataloader(
-        20, [3, image_dimension, image_dimension]
-    )
+    classname='bottle'
+    broken='large'
+    training_dataloader ,features= _dummy_constant_dataloader_image(r'/home/wwkkb/MVTec/bottle/train/good')
     print(model.featuresampler)
     model.fit(training_dataloader)
-
-    test_features = torch.Tensor(2 * np.ones([2, 3, image_dimension, image_dimension]))
+    train_data,test_features=_dummy_constant_dataloader_image(r'/home/wwkkb/MVTec/bottle/test/broken_large')
     scores, masks = model.predict(test_features)
+    for i in range(len(masks)):
+        # masks[i] = np.where(masks[i] < 40000, 0, masks[i])
+        plt.imshow(masks[i], cmap=cm.hot)
+        masks[i]=(masks[i]-np.min(masks[i]))/(np.max(masks[i])-np.min(masks[i]))
+        x=r"/home/wwkkb/MVTec/bottle/ground_truth/broken_large/" + "{:0>3}".format(str(i)) + "_mask.png"
+        true_mask=cv2.resize(cv2.imread(x,0),(112,112))
 
-    assert all([score > 0 for score in scores])
-    for mask in masks:
-        assert np.all(mask.shape == (image_dimension, image_dimension))
+        def get_accuracy(scores, true_mask):
+            from sklearn.metrics import accuracy_score
+            max_ = scores.max()
+            min_ = scores.min()
+            pre = cv2.resize(((max_ - scores) / (max_ - min_)),true_mask.shape).astype('int')
+
+            ret, pre = cv2.threshold(pre, 80, 255, cv2.THRESH_BINARY)
+
+            return accuracy_score(pre.flatten(),true_mask.flatten()), max_, min_
+
+        acc_,max_,min_=get_accuracy(masks[i],true_mask)
+        os.makedirs(os.path.join('/home/wwkkb/Mvtec_result', classname, 'test', broken), exist_ok=True)
+        plt.savefig(os.path.join('/home/wwkkb/Mvtec_result', classname, 'test', broken, str(i) + '.png'))
+        plt.colorbar()
+        plt.show()
+
+
 
 
 def test_patchcore_on_dataloader():

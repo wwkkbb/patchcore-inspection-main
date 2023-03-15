@@ -36,16 +36,18 @@ backbone_name = 'wideresnet50'
 layer = 'layer2'
 device = 'cuda'
 kmeans_f_rate = 0.01
+# rate_unlabel=0.02
+# lda_f_num = 5000
 rate_unlabel=0.02
-lda_f_num = 5000
-output_dir = f'log/log/cl_1_good{backbone_name}_{layer}'
+lda_f_num = 500
+output_dir = f'log/log/cl_1_good1_mask_unlabel{backbone_name}_{layer}'
 # kmeans_f_num = 50000
 # lda_f_num = 5000
 foreground_ratio = 0.2
 background_ratio = -3
 lda_threshold = None  # None自动
 gaussian_filter_sigma = 10
-n_clusters = 4
+n_clusters = 6
 
 object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood']
 CLASS_NAMES = [
@@ -243,8 +245,19 @@ for classname in CLASS_NAMES:
 
         clf = LabelPropagation(max_iter=1000, kernel='rbf', gamma=5)
         clf.fit(train_all, label_all)
-        train_all = train_all[-len(unlabeled_data):]
-        return train_all, clf.predict(train_all), clf
+        # train_all = train_all[-len(unlabeled_data):]
+        sum=0
+        # labels=[]
+        div=20
+        devide=int(len(unlabeled_data_all)/div)
+        for i in range(div):
+            pre=unlabeled_data_all[i*devide:(i+1)*devide]
+            label=clf.predict(pre)
+            index_=np.where(label==1)
+            x=pre[index_]
+            unlabeled_data_all[sum:sum+len(index_[0])]=x
+            sum+=len(index_[0])
+        return unlabeled_data_all[:sum], clf
 
         # 获取预测准确率
         # print('Accuracy:%f' % clf.score(X[unlabeled_indices], true_labels))
@@ -252,15 +265,15 @@ for classname in CLASS_NAMES:
 
     labeled_data = np.vstack((background_features, foreground_features))
     labeled_label = np.hstack((background_label, foreground_label))
-    train, label, clf = test_LabelPropagation(labeled_data, labeled_label,
+    trains,  clf = test_LabelPropagation(labeled_data, labeled_label,
                                               image_features.reshape(-1, features.shape[1]))
-    trains = np.zeros_like(train)
-    sum = 0
-    for i in range(len(label)):
-        if label[i] > 0:
-            trains[sum] = train[i]
-            sum += 1
-    trains = trains[:sum]
+    # trains = np.zeros_like(train)
+    # sum = 0
+    # for i in range(len(label)):
+    #     if label[i] > 0:
+    #         trains[sum] = train[i]
+    #         sum += 1
+    # trains = trains[:sum]
 
     image_dimension = 112
 
@@ -298,6 +311,7 @@ for classname in CLASS_NAMES:
         os.makedirs(cur_output_dir, exist_ok=True)
         max_s = []
         min_s = []
+        acc_s=[]
         for i in tqdm(range(len(test_dataset)), desc=f'test {an} result', leave=False):
             image_path = test_dataset.img_fns[i]
             image_name = os.path.basename(image_path)
@@ -414,25 +428,45 @@ for classname in CLASS_NAMES:
             # features=((train.T)*label).T
             #
             # print(features.shape)
+            def get_accuracy(scores, true_mask):
+                from heapq import heapify as heapify
+                from sklearn.metrics import accuracy_score
+                if len(true_mask.shape)==3:
+                    true_mask=cv2.cvtColor(true_mask, cv2.COLOR_RGB2GRAY)
+                max_ = scores.max()
+                min_ = scores.min()
+                pre = cv2.resize(((max_ - scores) / (max_ - min_))*255,true_mask.shape).astype('uint8')
+                # if ret=='good':
+                #     scores_1=list(scores.flatten())
+                #     heapify(scores_1)
+                #     for _ in range(len(scores_1)/10):
+                #
+                ret, pre = cv2.threshold(pre, 250, 255, cv2.THRESH_BINARY)
+                return accuracy_score(pre.flatten(), true_mask.flatten()), max_, min_
             scores, masks = model.predict(torch.from_numpy(features))
             # h=pow(len(label),0.5)
             label = label.reshape((80, 80))
             label = cv2.resize(label, (112, 112))
-            min_ = (masks[0]).min()
-            max_ = (masks[0]).max()
-            min_s.append(min_)
-            max_s.append(max_)
+
+
 
             mask = masks[0] * label
-            mask = np.where(mask < min_, min_, mask)
+            # mask = np.where(mask < min_, min_, mask)
             cur_classname_mask = os.path.join(train_dataset.root, train_dataset.classname, 'ground_truth', f'{an}',image_name[:3]+'_mask.png')
 
             mask=cv2.resize(mask,(224,224))
-            if f'{an}'=='agood' or f'{an}'=='aGOOD' or f'{an}'=='good':
+            if f'{an}'=='good':
                 mask_true=np.zeros((mask.shape[0],mask.shape[1],3))
+                mask_true_gray=np.zeros((mask.shape[0],mask.shape[1]))
             else:
                 mask_true = cv2.imread(cur_classname_mask)
                 mask_true = cv.cvtColor(mask_true, cv.COLOR_BGR2RGB)
+                mask_true_gray=cv2.imread(cur_classname_mask,0)
+            acc, max_, min_ = get_accuracy( masks[0],mask_true_gray)
+            min_s.append(min_)
+            max_s.append(max_)
+            acc_s.append(acc)
+            mask[0][0]=11.78
             plt.figure(figsize=(30, 30), dpi=360)
             plt.subplot(1, 3, 1)
             plt.imshow(cv2.resize(mask_true,mask.shape))
@@ -444,8 +478,8 @@ for classname in CLASS_NAMES:
             plt.savefig(os.path.join(cur_output_dir, image_name))
             plt.colorbar()
             plt.show()
-        with open(os.path.join(cur_output_dir, 'max_min.txt'), 'w') as file:
-            file.write(str([min_s, max_s]))
+        with open(os.path.join(cur_output_dir, 'max_min_acc.txt'), 'w') as file:
+            file.write(str([min_s, max_s,acc_s]))
 
     del features
     del clf
