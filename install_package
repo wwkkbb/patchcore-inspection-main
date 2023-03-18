@@ -1,0 +1,16 @@
+/home/wwkkb/anaconda3/envs/your_env_name/bin/conda install -p /home/wwkkb/anaconda3/envs/your_env_name pytorch -y
+不用装torch 这条命令会自动安装torch,kornia对torch有版本依赖:
+pip3 install kornia -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip3 install -r requirements -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+
+https://blog.csdn.net/weixin_39450145/article/details/125669330
+pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
+
+conda install  conda-forge sklearn-contrib-lightning
+conda install  "conda-forge/label/cf201901" sklearn-contrib-lightning
+conda install "conda-forge/label/cf202003" sklearn-contrib-lightning
+conda install "conda-forge/label/cf201901" sklearn-contrib-py-earth
+conda install "conda-forge/label/cf202003" sklearn-contrib-py-earth
+
+conda list | grep pytorch

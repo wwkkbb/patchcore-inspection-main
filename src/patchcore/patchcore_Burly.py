@@ -202,16 +202,17 @@ class PatchCore(torch.nn.Module):
 
     def _predict(self, images):
         """Infer score and mask for a batch of images."""
+        images,shape_=images
         images = images.to(torch.float).to(self.device)
         _ = self.forward_modules.eval()
 
-        batchsize = 1
+        batchsize = shape_[0]
         with torch.no_grad():
             # features, patch_shapes = self._embed(images, provide_patch_shapes=True)
             features = images
             features = np.asarray(features)
             features = np.ascontiguousarray(features)
-            patch_shapes=[80,80]
+            patch_shapes=[shape_[1],shape_[2]]
 
             patch_scores = image_scores = self.anomaly_scorer.predict([features])[0]
             image_scores = self.patch_maker.unpatch_scores(
