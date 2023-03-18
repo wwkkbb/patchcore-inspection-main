@@ -80,12 +80,12 @@ class GreedyCoresetSampler(BaseSampler):
     @staticmethod
     def _compute_batchwise_differences(
         matrix_a: torch.Tensor, matrix_b: torch.Tensor
-    ) -> torch.Tensor:
-        """Computes batchwise Euclidean distances using PyTorch."""
+    ) -> torch.Tensor:#torch.bmm(a,b),tensor a 的size为(b,h,w),tensor b的size为(b,w,m) 也就是说两个tensor的第一维是相等的，然后第一个数组的第三维和第二个数组的第二维度要求一样，对于剩下的则不做要求，输出维度 （b,h,m）
+        """Computes batchwise Euclidean distances using PyTorch."""#unsqueeze()的作用是用来增加给定tensor的维度的，unsqueeze(dim)就是在维度序号为dim的地方给tensor增加一维
         a_times_a = matrix_a.unsqueeze(1).bmm(matrix_a.unsqueeze(2)).reshape(-1, 1)
-        b_times_b = matrix_b.unsqueeze(1).bmm(matrix_b.unsqueeze(2)).reshape(1, -1)
-        a_times_b = matrix_a.mm(matrix_b.T)
-
+        b_times_b = matrix_b.unsqueeze(1).bmm(matrix_b.unsqueeze(2)).reshape(1, -1)#10*1*5.bmm(10*5*1)->10*1*1  reshape->1*10
+        a_times_b = matrix_a.mm(matrix_b.T)#torch.mm(mat1, mat2, out=None) → Tensor. 矩阵mat1和mat2进行相乘
+        # 将给定的张量的所有元素的取值限定在一个指定的范围之内
         return (-2 * a_times_b + a_times_a + b_times_b).clamp(0, None).sqrt()
 
     def _compute_greedy_coreset_indices(self, features: torch.Tensor) -> np.ndarray:
@@ -137,7 +137,7 @@ class ApproximateGreedyCoresetSampler(GreedyCoresetSampler):
         Args:
             features: [NxD] input feature bank to sample.
         """
-        number_of_starting_points = np.clip(
+        number_of_starting_points = np.clip(# numpy.clip(a, a_min, a_max, out=None):a: 输入的数组  a_min: 限定的最小值# 也可以是数组 如果为数组时 shape必须和a一样,out：剪裁后的数组存入的数组
             self.number_of_starting_points, None, len(features)
         )
         start_points = np.random.choice(

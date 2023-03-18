@@ -292,6 +292,9 @@ def test_patchcore_real_data():
     training_dataloader = _dummy_various_dataloader(
         num_dummy_train_images, [3, image_dimension, image_dimension]
     )
+    # model.anomaly_scorer = patchcore.common.NearestNeighbourScorer(
+    #     n_nearest_neighbours=3, nn_method=patchcore.common.ApproximateFaissNN(False, 4)
+    # )
     model.fit(training_dataloader)
 
     num_dummy_test_images = 5
