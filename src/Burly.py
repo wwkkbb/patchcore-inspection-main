@@ -39,8 +39,9 @@ device = 'cuda'
 data_root = '/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVTec'
 kmeans_f_rate = 0.01
 rate_unlabel = 0.02
+
 lda_f_num = 500
-output_dir = f'log/cl_1_good3_mask_unlabel{backbone_name}_{layer}'
+output_dir = f'log/cl_1_good320_mask_unlabel{backbone_name}_{layer}'
 #debug
 # data_root = '/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVtec'
 # kmeans_f_rate = 0.01
@@ -56,9 +57,9 @@ lda_threshold = None  # None自动
 gaussian_filter_sigma = 10
 n_clusters = 4
 
-object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood']
+object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood','bottle','cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather',]
 CLASS_NAMES = [
-    'bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
+      'metal_nut', 'pill', 'screw', 'tile',
     'toothbrush', 'transistor', 'wood', 'zipper'
 ]
 
@@ -232,13 +233,13 @@ for classname in CLASS_NAMES:
         X, y, unlabeled_data_all = data
         sampling_percentage = 0.1
         feature_dimension = 512
-        model = sampler.GreedyCoresetSampler(
-            percentage=sampling_percentage,
-            device=torch.device("cpu"),
-            dimension_to_project_features_to=feature_dimension,
-        )
-        unlabeled_datas = None
-        num = 20
+        # model = sampler.GreedyCoresetSampler(
+        #     percentage=sampling_percentage,
+        #     device=torch.device("cpu"),
+        #     dimension_to_project_features_to=feature_dimension,
+        # )
+        # unlabeled_datas = None
+        # num = 20
         # for sa in range(num):
         #     unlabeled_data = torch.from_numpy(unlabeled_data_all[int(len(unlabeled_data_all) / num) * sa:int(
         #         len(unlabeled_data_all) / num) * (sa + 1)])
@@ -301,7 +302,7 @@ for classname in CLASS_NAMES:
             patchsize=3,
             patchstride=1,
             spade_nn=2,
-            featuresampler=patchcore.sampler.ApproximateGreedyCoresetSampler(percentage=0.1,device="cuda")
+            featuresampler=patchcore.sampler.ApproximateGreedyCoresetSampler(percentage=0.1,device="cpu")
         )
         return patchcore_instance
 
@@ -319,6 +320,7 @@ for classname in CLASS_NAMES:
         if x[i] == 'good':
             x[i] = x[0]
             x[0] = 'good'
+    dic=dict()
     for an in tqdm(x, 'test result'):
         test_dataset = MVTecDataset(train_dataset.root, train_dataset.classname, train_dataset.resize, split='test',
                                     anomaly=an)
@@ -378,66 +380,85 @@ for classname in CLASS_NAMES:
             ret, pre = cv2.threshold(pre, 250, 255, cv2.THRESH_BINARY)
             return accuracy_score(pre.flatten(), true_mask.flatten()), max_, min_
 
-
-        model = pickle.load(open(os.path.join(output_dir, classname, "patchcore.dat"), "rb"))
-        scores, masks = model.predict((torch.from_numpy(features), shape_))
-
-
-        # h=pow(len(label),0.5)
-        def get_auc(mask_true_gray, mask,cur_output_dir):
-            from sklearn.metrics import roc_curve, auc
-            mask_true_gray=np.array(mask_true_gray)
-            mask_true_gray[:,0,0]=1
-            mask_true_gray = (np.concatenate(mask_true_gray)).flatten()
-            mask = (np.concatenate(mask)).flatten()
-            mask_ = (mask - mask.min()) / (mask.max() - mask.min())
-            mask_true_gray = mask_true_gray.astype(int)
-            mask_true_gray[0] = 1
-            fpr, tpr, thresholds = roc_curve(mask_true_gray.flatten(), mask_.flatten(), pos_label=1)
-
-            roc_auc = auc(fpr, tpr)
-            plt.title('Receiver Operating Characteristic')
-            plt.plot(fpr, tpr, '#9400D3', label=u'AUC = %0.3f' % roc_auc)
-            plt.legend(loc='lower right')
-            plt.plot([0, 1], [0, 1], 'r--')
-            plt.xlim([-0.1, 1.1])
-            plt.ylim([-0.1, 1.1])
-            plt.ylabel('True Positive Rate')
-            plt.xlabel('False Positive Rate')
-            plt.grid(linestyle='-.')
-            plt.grid(True)
-            plt.savefig(os.path.join(cur_output_dir, 'auc.png'))
-            plt.show()
-            print(roc_auc)
+        with torch.no_grad():
+            model = pickle.load(open(os.path.join(output_dir, classname, "patchcore.dat"), "rb"))
+            scores, masks = model.predict((torch.from_numpy(features), shape_))
 
 
-        get_auc(mask_true_grays, masks,cur_output_dir)
+            # h=pow(len(label),0.5)
+            def get_auc(mask_true_gray, mask,cur_output_dir):
+                from sklearn.metrics import roc_curve, auc
+                mask_true_gray=np.array(mask_true_gray)
+                mask_true_gray[:,0,0]=1
+                mask_true_gray = (np.concatenate(mask_true_gray)).flatten()
+                mask = (np.concatenate(mask)).flatten()
+                mask_ = (mask - mask.min()) / (mask.max() - mask.min())
+                mask_true_gray = mask_true_gray.astype(int)
+                mask_true_gray[0] = 1
+                fpr, tpr, thresholds = roc_curve(mask_true_gray.flatten(), mask_.flatten(), pos_label=1)
 
-        _ = np.zeros((shape_[0], 112, 112))
-        labels = labels.reshape((shape_[0], shape_[1], shape_[2]))
-        for i in range(len(labels)):
-            _[i] = masks[i] * cv2.resize(labels[i], (112, 112))
-        masks = _
-        for i in range(len(labels)):
-            # mask = np.where(mask < min_, min_, mask)
+                roc_auc = auc(fpr, tpr)
+                plt.title('Receiver Operating Characteristic')
+                plt.plot(fpr, tpr, '#9400D3', label=u'AUC = %0.3f' % roc_auc)
+                plt.legend(loc='lower right')
+                plt.plot([0, 1], [0, 1], 'r--')
+                plt.xlim([-0.1, 1.1])
+                plt.ylim([-0.1, 1.1])
+                plt.ylabel('True Positive Rate')
+                plt.xlabel('False Positive Rate')
+                plt.grid(linestyle='-.')
+                plt.grid(True)
+                plt.savefig(os.path.join(cur_output_dir, 'auc.png'))
+                # plt.show()
+                print(roc_auc)
+                return roc_auc
 
-            acc, max_, min_ = get_accuracy(masks[i], mask_true_grays[i])
-            min_s.append(min_)
-            max_s.append(max_)
-            acc_s.append(acc)
-            # plt.figure(figsize=(30, 30), dpi=360)
-            plt.subplot(1, 3, 1)
-            plt.imshow(cv2.resize(mask_true_grays[i], masks[i].shape),cmap=plt.get_cmap('gray'))
-            plt.subplot(1, 3, 2)
-            plt.imshow(cv2.resize(image_test, masks[i].shape))
-            plt.subplot(1, 3, 3)
-            plt.imshow(masks[i], cmap=cm.hot)
-            os.makedirs(cur_output_dir, exist_ok=True)
-            plt.savefig(os.path.join(cur_output_dir, "{:0>3}".format(str(i)) + '.png'))
-            plt.colorbar()
-            plt.show()
-    with open(os.path.join(cur_output_dir, 'max_min_acc.txt'), 'w') as file:
-        file.write(str([min_s, max_s, acc_s]))
+            dic[an]=get_auc(mask_true_grays, masks,cur_output_dir)
+
+            _ = np.zeros((shape_[0], 112, 112))
+            labels = labels.reshape((shape_[0], shape_[1], shape_[2]))
+            for i in range(len(labels)):
+                _[i] = masks[i] * cv2.resize(labels[i], (112, 112))
+            masks = _
+            for i in range(len(labels)):
+                # mask = np.where(mask < min_, min_, mask)
+
+                # acc, max_, min_ = get_accuracy(masks[i], mask_true_grays[i])
+                # min_s.append(min_)
+                # max_s.append(max_)
+                # acc_s.append(acc)
+                # # plt.figure(figsize=(30, 30), dpi=360)
+                # plt.subplot(1, 3, 1)
+                # plt.imshow(cv2.resize(mask_true_grays[i], masks[i].shape),cmap=plt.get_cmap('gray'))
+                # plt.subplot(1, 3, 2)
+                # plt.imshow(cv2.resize(image_test, masks[i].shape))
+                # plt.subplot(1, 3, 3)
+                # plt.imshow(masks[i], cmap=cm.hot)
+                # os.makedirs(cur_output_dir, exist_ok=True)
+                # plt.savefig(os.path.join(cur_output_dir, "{:0>3}".format(str(i)) + '.png'))
+                # plt.colorbar()
+                # # plt.show()
+                acc, max_, min_ = get_accuracy(masks[i], mask_true_grays[i])
+                min_s.append(min_)
+                max_s.append(max_)
+                acc_s.append(acc)
+                # plt.figure(figsize=(30, 30), dpi=360)
+                plt.subplot(1, 3, 1)
+                x1 = cv2.resize(mask_true_grays[i], masks[i].shape)
+                plt.imshow(x1, cmap=plt.get_cmap('gray'))
+                plt.subplot(1, 3, 2)
+                x2 = cv2.resize(image_test, masks[i].shape)
+                plt.imshow(x2)
+                plt.subplot(1, 3, 3)
+                plt.imshow(masks[i], cmap=cm.hot)
+                os.makedirs(cur_output_dir, exist_ok=True)
+
+                plt.savefig(os.path.join(cur_output_dir, "{:0>3}".format(str(i)) + '.png'))
+                plt.colorbar()
+                # plt.show()
+                plt.close()
+    with open(os.path.join(cur_classname_output_dir, 'aucs.txt'), 'w') as file:
+        file.write(str(dic))
     del model
     del features
     del clf,labels_imgs,labels

@@ -1,4 +1,3 @@
-
 import patchcore.common
 import patchcore.backbones
 import os
@@ -38,7 +37,7 @@ kmeans_f_rate = 0.01
 # lda_f_num = 5000
 rate_unlabel = 0.005
 lda_f_num = 200
-output_dir = f'log/cl_1_good3_mask_unlabel{backbone_name}_{layer}'
+output_dir = f'log/cl_1_good33_mask_unlabel{backbone_name}_{layer}'
 # kmeans_f_num = 50000
 # lda_f_num = 5000
 foreground_ratio = 0.2
@@ -47,9 +46,9 @@ lda_threshold = None  # None自动
 gaussian_filter_sigma = 10
 n_clusters = 4
 
-object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood']
-CLASS_NAMES = [
-    'bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile',
+object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood',
+    'bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', ]
+CLASS_NAMES = ['pill', 'screw', 'tile',
     'toothbrush', 'transistor', 'wood', 'zipper'
 ]
 
@@ -108,7 +107,7 @@ elif isinstance(network_layer, torch.nn.Module):
 for classname in CLASS_NAMES:
     if classname in object_classnames:
         continue
-    dic = dict()
+
     cur_classname_output_dir = os.path.join(output_dir, classname)
     os.makedirs(cur_classname_output_dir, exist_ok=True)
     # print(classname)
@@ -117,6 +116,7 @@ for classname in CLASS_NAMES:
     clf = pickle.load(open(os.path.join(output_dir, classname, "dtr.dat"), "rb"))
 
     # test
+    dic = dict()
     x = os.listdir(os.path.join(train_dataset.root, train_dataset.classname, 'test'))
     for i in range(len(x)):
         if x[i] == 'good':
@@ -191,7 +191,7 @@ for classname in CLASS_NAMES:
 
 
         # h=pow(len(label),0.5)
-        def get_auc(mask_true_gray, mask):
+        def get_auc(mask_true_gray, mask,cur_output_dir):
             from sklearn.metrics import roc_curve, auc
             mask_true_gray = (np.concatenate(mask_true_gray)).flatten()
             mask = (np.concatenate(mask)).flatten()
@@ -212,13 +212,14 @@ for classname in CLASS_NAMES:
             plt.grid(linestyle='-.')
             plt.grid(True)
             # plt.show()
+            plt.savefig(os.path.join(cur_output_dir, 'auc.png'))
             plt.close()
             print(roc_auc)
             # del plt
             return roc_auc
 
 
-        dic[an] = get_auc(mask_true_grays, masks)
+        dic[an] = get_auc(mask_true_grays, masks,cur_output_dir)
 
         _ = np.zeros((shape_[0], 112, 112))
         labels = labels.reshape((shape_[0], shape_[1], shape_[2]))
@@ -230,10 +231,10 @@ for classname in CLASS_NAMES:
         for i in range(len(labels)):
             # mask = np.where(mask < min_, min_, mask)
 
-            acc, max_, min_ = get_accuracy(masks[i], mask_true_grays[i])
-            min_s.append(min_)
-            max_s.append(max_)
-            acc_s.append(acc)
+            # acc, max_, min_ = get_accuracy(masks[i], mask_true_grays[i])
+            # min_s.append(min_)
+            # max_s.append(max_)
+            # acc_s.append(acc)
             # plt.figure(figsize=(30, 30), dpi=360)
             plt.subplot(1, 3, 1)
             x1=cv2.resize(mask_true_grays[i], masks[i].shape)

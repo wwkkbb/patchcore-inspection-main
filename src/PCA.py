@@ -70,7 +70,7 @@ import numpy as np
 # x=confusion_matrix(y_true=y_true, y_pred=y_pred)
 # print(x)
 from sklearn.metrics import accuracy_score
-import cv2
+# import cv2
 
 # y_pred是预测标签
 # y_pred = cv2.imread("/home/wwkkb/MVTec/bottle/test/broken_large/000.png")
@@ -126,11 +126,11 @@ from sklearn.metrics import roc_curve, auc,det_curve
 # print(roc_auc)
 import matplotlib.cm as cm
 import os
-import tracemalloc
-
-tracemalloc.start()
-cur_output_dir="/home/wwkkb/result"
-mask_true_grays=cv2.imread("/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVtec/bottle/test/broken_large/000.png")
+# import tracemalloc
+#
+# tracemalloc.start()
+# cur_output_dir="/home/wwkkb/result"
+# mask_true_grays=cv2.imread("/media/wwkkb/0CCD76FCF63D1C29/wwkkb/MVtec/bottle/test/broken_large/000.png")
 # plt.figure(figsize=(30, 30), dpi=360)
 # del mask_true_grays
 # plt.subplot(1, 2, 1)
@@ -164,7 +164,7 @@ from decimal import getcontext, Decimal
 
 
 
-path = r'/home/wwkkb/Downloads/project/patchcore-inspection-main/src/log/cl_1_good3_mask_unlabelwideresnet50_layer2'
+path = r'/home/wwkkb/Downloads/project/patchcore-inspection-main/src/log/cl_1_good320_mask_unlabelwideresnet50_layer2'
 name_class=os.listdir(path)
 dic=dict()
 with open("/home/wwkkb/aucs.txt",'w') as file:
@@ -183,3 +183,9 @@ with open("/home/wwkkb/aucs.txt",'w') as file:
     file.write(str(dic))
     file.close()
 
+# words="11234"
+# msg='123456'
+# for i in words:
+#     len_=len(msg)
+#     msg=msg.replace(i,"")
+#     print(len(msg)==len_)
