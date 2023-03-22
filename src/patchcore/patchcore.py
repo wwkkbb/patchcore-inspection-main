@@ -155,7 +155,7 @@ class PatchCore(torch.nn.Module):
     def _fill_memory_bank(self, input_data):
         """Computes and sets the support features for SPADE."""
         _ = self.forward_modules.eval()
-
+        input_data,mask_index,masks_=input_data
         def _image_to_features(input_image):
             with torch.no_grad():
                 input_image = input_image.to(torch.float).to(self.device)
@@ -169,21 +169,29 @@ class PatchCore(torch.nn.Module):
                 if isinstance(image, dict):
                     image = image["image"]
                 features.append(_image_to_features(image))
-
+        features=np.array(features)
+        # b,hw,c=features.shape
+        # h=int(pow(hw,0.5))
+        # features=features.reshape(b,h,h,c)
         features = np.concatenate(features, axis=0)
+        features=((features[mask_index]).T*masks_).T
+        # x_=int(pow(features.shape[0]/16))
+        # features.reshape((16,x_,x_)).reshape()
         features = self.featuresampler.run(features)
 
+        features = features.astype(np.float32)
         self.anomaly_scorer.fit(detection_features=[features])
 
-    def predict(self, data):
+    def predict(self, data_clf):
+        data,clf=data_clf
         if isinstance(data, torch.utils.data.DataLoader):
-            return self._predict_dataloader(data)
-        return self._predict(data)
+            return self._predict_dataloader(data_clf)
+        return self._predict(data_clf)
 
-    def _predict_dataloader(self, dataloader):
+    def _predict_dataloader(self, dataloader_clf):
         """This function provides anomaly scores/maps for full dataloaders."""
         _ = self.forward_modules.eval()
-
+        dataloader,clf=dataloader_clf
         scores = []
         masks = []
         labels_gt = []
@@ -194,13 +202,14 @@ class PatchCore(torch.nn.Module):
                     labels_gt.extend(image["is_anomaly"].numpy().tolist())
                     masks_gt.extend(image["mask"].numpy().tolist())
                     image = image["image"]
-                _scores, _masks = self._predict(image)
+                _scores, _masks = self._predict((image,clf))
                 for score, mask in zip(_scores, _masks):
                     scores.append(score)
                     masks.append(mask)
         return scores, masks, labels_gt, masks_gt
 
-    def _predict(self, images):#batch*3*112*112
+    def _predict(self, images_clf):#batch*3*112*112
+        images,clf=images_clf
         """Infer score and mask for a batch of images."""
         images = images.to(torch.float).to(self.device)
         _ = self.forward_modules.eval()

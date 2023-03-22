@@ -57,9 +57,9 @@ lda_threshold = None  # None自动
 gaussian_filter_sigma = 10
 n_clusters = 4
 
-object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood','bottle','cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather',]
+object_classnames = ['carpet', 'grid', 'leather', 'tile', 'wood','bottle','cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill',]
 CLASS_NAMES = [
-      'metal_nut', 'pill', 'screw', 'tile',
+      'screw', 'tile',
     'toothbrush', 'transistor', 'wood', 'zipper'
 ]
 
@@ -457,7 +457,7 @@ for classname in CLASS_NAMES:
                 plt.colorbar()
                 # plt.show()
                 plt.close()
-    with open(os.path.join(cur_classname_output_dir, 'aucs.txt'), 'w') as file:
+    with open(os.path.join(cur_classname_output_dir,  'aucs.txt'), 'w') as file:
         file.write(str(dic))
     del model
     del features
